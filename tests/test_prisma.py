@@ -75,7 +75,7 @@ def test_retries_once_then_succeeds(mock_api, cache, wav, no_sleep, status) -> N
     res = client(cache, no_sleep).transcribe(wav, "a.wav", PrismaSettings())
     assert res.transcript == OK["transcript"]
     assert route.call_count == 2
-    assert len(no_sleep) == 1 and 0 < no_sleep[0] <= 3
+    assert len(no_sleep) == 1 and 0 < no_sleep[0] <= 4  # 429 waits 2-4 s
 
 
 @pytest.mark.parametrize(

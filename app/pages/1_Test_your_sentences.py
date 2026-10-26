@@ -59,7 +59,7 @@ if st.button("Run test", type="primary", disabled=left <= 0):
     try:
         with st.spinner(f"Speaking and transcribing {len(sentences)} sentence(s)…"):
             report = run_sentence_job(
-                sentences, voice, model, TimbreClient(key, cache), PrismaClient(key, cache),
+                sentences, voice, model, TimbreClient(key, cache, throttle=ui.throttle()), PrismaClient(key, cache, throttle=ui.throttle()),
                 ui.noise_bank(), bias, lexicon,
             )  # fmt: skip
         st.session_state["sentence_report"] = report

@@ -12,6 +12,7 @@ from kuralcheck.cache import Cache, make_key
 from kuralcheck.clients._http import post_with_retry
 from kuralcheck.clients.errors import ApiError
 from kuralcheck.config import Settings, get_settings
+from kuralcheck.throttle import Throttle, shared_throttle
 
 ENDPOINT = "/api/v1/tts/inference"
 TIMEOUT_S = 20.0
@@ -66,6 +67,7 @@ class TimbreClient:
         base_url: str = "https://api.vachana.ai",
         http: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        throttle: Throttle | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("GNANI_API_KEY is not set (add it to .env or Streamlit secrets)")
@@ -74,11 +76,13 @@ class TimbreClient:
         self._url = base_url.rstrip("/") + ENDPOINT
         self._http = http or httpx.Client(timeout=TIMEOUT_S)
         self._sleep = sleep
+        self._throttle = throttle
 
     @classmethod
     def from_settings(cls, settings: Settings | None = None, cache: Cache | None = None) -> "TimbreClient":
         s = settings or get_settings()
-        return cls(s.gnani_api_key.get_secret_value(), cache or Cache(s.cache_path), s.gnani_base_url)
+        return cls(s.gnani_api_key.get_secret_value(), cache or Cache(s.cache_path), s.gnani_base_url,
+                   throttle=shared_throttle(s.gnani_calls_per_second))
 
     def cache_key(self, text: str, settings: TimbreSettings) -> str:
         return make_key("timbre", text.encode("utf-8"), settings.as_dict())
@@ -105,6 +109,7 @@ class TimbreClient:
             self._url,
             name="timbre",
             sleep=self._sleep,
+            throttle=self._throttle,
             headers={"X-API-Key-ID": self._key},
             json=payload,
         )

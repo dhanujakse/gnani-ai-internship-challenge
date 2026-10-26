@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from kuralcheck.throttle import Throttle
 from kuralcheck.clients.errors import (
     ApiAuthError,
     ApiBadRequest,
@@ -36,7 +37,9 @@ def _error_for(status: int, name: str) -> ApiError:
 def _backoff(response: httpx.Response | None) -> float:
     retry_after = response.headers.get("retry-after") if response is not None else None
     if retry_after and retry_after.isdigit():
-        return min(float(retry_after), 3.0)
+        return min(float(retry_after), 10.0)
+    if response is not None and response.status_code == 429:
+        return random.uniform(2.0, 4.0)  # rate limited: back off longer
     return random.uniform(0.5, 1.5)
 
 
@@ -47,11 +50,14 @@ def post_with_retry(
     name: str,
     retries: int = 1,
     sleep: Callable[[float], None] = time.sleep,
+    throttle: Throttle | None = None,
     **kwargs: Any,
 ) -> tuple[httpx.Response, float]:
     """Returns (successful response, latency in ms of the attempt that succeeded)."""
     for attempt in range(retries + 1):
         last = attempt == retries
+        if throttle is not None:
+            throttle.wait()
         start = time.perf_counter()
         try:
             resp = http.post(url, **kwargs)

@@ -93,3 +93,14 @@ def runs() -> list[Run]:
 @st.cache_data(show_spinner=False)
 def load_records(run_path: str, mtime: float) -> list[dict]:
     return Run(Path(run_path), {}).records()
+
+
+def throttle():
+    """Shared pacing for all paid calls from the app (Gnani returns 429 when calls come too fast)."""
+    from kuralcheck.throttle import shared_throttle
+
+    try:
+        rate = float(get_secret("GNANI_CALLS_PER_SECOND", "1") or 1)
+    except ValueError:
+        rate = 1.0
+    return shared_throttle(rate)

@@ -15,6 +15,7 @@ from kuralcheck.cache import Cache, make_key
 from kuralcheck.clients._http import post_with_retry
 from kuralcheck.clients.errors import ApiError
 from kuralcheck.config import Settings, get_settings
+from kuralcheck.throttle import Throttle, shared_throttle
 
 ENDPOINT = "/stt/v3"
 MAX_SECONDS = 60.0
@@ -89,6 +90,7 @@ class PrismaClient:
         base_url: str = "https://api.vachana.ai",
         http: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        throttle: Throttle | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("GNANI_API_KEY is not set (add it to .env or Streamlit secrets)")
@@ -97,11 +99,13 @@ class PrismaClient:
         self._url = base_url.rstrip("/") + ENDPOINT
         self._http = http or httpx.Client(timeout=TIMEOUT_S)
         self._sleep = sleep
+        self._throttle = throttle
 
     @classmethod
     def from_settings(cls, settings: Settings | None = None, cache: Cache | None = None) -> "PrismaClient":
         s = settings or get_settings()
-        return cls(s.gnani_api_key.get_secret_value(), cache or Cache(s.cache_path), s.gnani_base_url)
+        return cls(s.gnani_api_key.get_secret_value(), cache or Cache(s.cache_path), s.gnani_base_url,
+                   throttle=shared_throttle(s.gnani_calls_per_second))
 
     def cache_key(self, audio: bytes, settings: PrismaSettings) -> str:
         return make_key("prisma", audio, settings.as_dict())
@@ -130,6 +134,7 @@ class PrismaClient:
             self._url,
             name="prisma",
             sleep=self._sleep,
+            throttle=self._throttle,
             headers={"X-API-Key-ID": self._key},
             data=data,
             files={"audio_file": (filename, audio, MIME.get(ext, "application/octet-stream"))},

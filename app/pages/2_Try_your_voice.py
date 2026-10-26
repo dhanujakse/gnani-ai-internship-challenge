@@ -50,7 +50,7 @@ if st.button("Transcribe", type="primary", disabled=source is None or left <= 0)
         with st.spinner("Transcribing…"):
             result = run_voice_job(
                 source.getvalue(), getattr(source, "name", "voice.wav") or "voice.wav",
-                PrismaClient(key, cache=None),  # never cache user recordings or their transcripts
+                PrismaClient(key, cache=None, throttle=ui.throttle()),  # never cache user recordings or their transcripts
                 ui.noise_bank(), reference,
             )  # fmt: skip
     except (ApiError, ValueError, RuntimeError) as exc:
