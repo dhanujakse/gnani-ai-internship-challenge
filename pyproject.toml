@@ -13,6 +13,9 @@ dependencies = [
     "matplotlib>=3.8",
     "streamlit>=1.40",
     "imageio-ffmpeg>=0.6.0",
+    "fastapi>=0.162.0",
+    "uvicorn[standard]>=0.54.0",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]

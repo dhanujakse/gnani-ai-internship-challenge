@@ -72,6 +72,44 @@ Every Prisma, Timbre and Whisper result is cached in `cache/kuralcheck.sqlite`, 
 audio or text plus the settings, so re-running never spends credits twice. A full test run is
 120 synthetic + 20 real utterances × 4 conditions × 3 Prisma calls (F3 reuses F2's call) = 1,680 calls.
 
+## Developer tool: Chrome extension + API
+
+A Chrome extension (Manifest V3) for developers building Tamil voice apps on Prisma:
+quick test from the toolbar, right-click any Tamil text → "Test with KuralCheck", a full tester
+(test text, record your voice, score a transcript, fix a transcript, benchmark results) and a
+**KuralCheck panel inside Chrome DevTools**. Install steps: [extension/README.md](extension/README.md).
+
+```bash
+uv run uvicorn kuralcheck.api:app --port 8765     # the extension's backend; keeps the Gnani key
+uv run python scripts/package_extension.py        # dist/kuralcheck-extension-v1.0.0.zip
+```
+
+| API endpoint | Gnani calls |
+|---|---|
+| `GET /health`, `GET /v1/results/latest` | 0 |
+| `POST /v1/score` (CER/WER/numbers for your own transcript) | 0 |
+| `POST /v1/fix` (apply the KuralCheck fix layer to a Prisma transcript) | 0 |
+| `POST /v1/test-text` (≤ 10 sentences → clean + noisy phone → Prisma F0/F3) | ≤ 5 per new sentence |
+| `POST /v1/test-audio` (your recording → clean vs phone line, never stored) | 4 |
+
+### Speed and credit efficiency
+
+- **Content-hash cache** for every Prisma, Timbre and Whisper result: repeats cost 0 calls and 0 ms of API time.
+- **Shared calls:** F3 reuses F2's Prisma call; F2 reuses F1's when there are no hint words; duplicate sentences run once.
+- **Adaptive pacing (AIMD):** the call rate rises while Gnani accepts calls and halves on a 429, so runs go
+  as fast as allowed without wasting retries (the test run settled at about 3 calls/s).
+- **Parallel jobs:** sentences, conditions and the F0/F2 calls of one clip run concurrently.
+- **Offline tools:** scoring and fixing transcripts never call an API.
+
+### Accuracy
+
+- **Auto-tuned fix layer** (`scripts/tune_fixlayer.py`), dev split only: hint words for F2 mined from
+  F1 errors; format rules (₹25 → 25 ரூபாய், 03:40 → 3:40, ITN "1" → ஒரு) and spelling rules for F3 kept
+  only if they lower total dev errors **and** make no single dev transcript worse. Spelling rules must be
+  near-identical spellings, so mishearings are never "fixed" by memorising them.
+- **Number-aware scoring:** digits and Tamil number words (including colloquial spellings Prisma produces)
+  count as the same number.
+
 ## The app
 
 - **Results:** scorecard, CER by condition with 95% CI, filters (source, condition, category, setting),

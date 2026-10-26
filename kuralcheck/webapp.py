@@ -12,6 +12,7 @@ import re
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import MutableMapping
 from dataclasses import dataclass, field
 from datetime import date
@@ -138,6 +139,15 @@ def _conditions_for(noise: NoiseBank) -> tuple[str, str]:
     return ("C1", "C4") if noise.clips else ("C1", "C2")
 
 
+def _transcribe_pair(prisma: Any, audio: bytes, name: str, f0: PrismaSettings, f2: PrismaSettings,
+                     lexicon: Lexicon, pool: ThreadPoolExecutor) -> tuple[str, str, int]:
+    """F0 and F2 in parallel; F3 = lexicon(F2) with no extra call. Returns (F0, F3, new calls)."""
+    a = pool.submit(prisma.transcribe, audio, name, f0)
+    b = pool.submit(prisma.transcribe, audio, name, f2)
+    r0, r2 = a.result(), b.result()
+    return r0.transcript, lexicon.apply(r2.transcript), int(not r0.cached) + int(not r2.cached)
+
+
 def run_sentence_job(
     sentences: list[str],
     voice: str,
@@ -148,43 +158,82 @@ def run_sentence_job(
     bias_words: tuple[str, ...],
     lexicon: Lexicon,
     seed: int = 42,
+    workers: int = 4,
 ) -> dict[str, Any]:
-    """Timbre -> C1 and C4 -> Prisma F0 and F3 for each sentence; returns a mini report."""
+    """Timbre -> C1 and C4 -> Prisma F0 and F3 for each sentence; returns a mini report.
+
+    Fast and frugal: duplicate sentences are processed once, sentences and conditions run in
+    parallel (the clients' shared throttle still paces paid calls), cached calls cost nothing,
+    and F3 reuses the F2 call."""
+    start = time.perf_counter()
     clean_cond, noisy_cond = _conditions_for(noise)
     f0 = PrismaSettings(format="verbatim")
     f2 = PrismaSettings(format="transcribe", bias_list=bias_words, bias_score=BIAS_SCORE if bias_words else None)
-    rows: list[dict[str, Any]] = []
+    unique = list(dict.fromkeys(sentences))
+    new_calls = 0
+    lock = threading.Lock()
+
+    def one(i: int, text: str, tmpdir: Path, pool: ThreadPoolExecutor) -> dict[str, Any]:
+        nonlocal new_calls
+        tts = timbre.synthesize(text, TimbreSettings(voice=voice, model=tts_model))  # type: ignore[arg-type]
+        src = tmpdir / f"s{i}.wav"
+        src.write_bytes(tts.audio)
+        clean = load_clean(src)
+        row: dict[str, Any] = {"sentence": text, "audio": {}, "scores": {}}
+        calls = int(not tts.cached)
+        for cond in (clean_cond, noisy_cond):
+            path = tmpdir / cond / f"s{i}.wav"
+            build_condition(clean, f"user{i}", CONDITIONS[cond], path, noise, seed)
+            audio = path.read_bytes()
+            row["audio"][cond] = audio
+            hyp0, hyp3, n = _transcribe_pair(prisma, audio, path.name, f0, f2, lexicon, pool)
+            calls += n
+            for setting, hyp in (("F0", hyp0), ("F3", hyp3)):
+                sc = score_utterance(text, hyp)
+                row[f"{cond}_{setting}"] = hyp
+                row[f"{cond}_{setting}_cer"] = sc.char_edits / sc.char_ref if sc.char_ref else 0.0
+                row["scores"][(cond, setting)] = sc
+        with lock:
+            new_calls += calls
+        return row
+
+    with tempfile.TemporaryDirectory() as tmp, ThreadPoolExecutor(max_workers=max(2, workers * 2)) as inner,             ThreadPoolExecutor(max_workers=workers) as outer:  # fmt: skip
+        futures = [outer.submit(one, i, t, Path(tmp), inner) for i, t in enumerate(unique)]
+        by_text = {r["sentence"]: r for r in (f.result() for f in futures)}
+    rows = [by_text[t] for t in sentences]  # original order, duplicates included
     scores: dict[tuple[str, str], list] = {}
-    with tempfile.TemporaryDirectory() as tmp:
-        tmpdir = Path(tmp)
-        for i, text in enumerate(sentences):
-            tts = timbre.synthesize(text, TimbreSettings(voice=voice, model=tts_model))  # type: ignore[arg-type]
-            src = tmpdir / f"s{i}.wav"
-            src.write_bytes(tts.audio)
-            clean = load_clean(src)
-            row: dict[str, Any] = {"sentence": text, "audio": {}}
-            for cond in (clean_cond, noisy_cond):
-                path = tmpdir / cond / f"s{i}.wav"
-                build_condition(clean, f"user{i}", CONDITIONS[cond], path, noise, seed)
-                audio = path.read_bytes()
-                row["audio"][cond] = audio
-                hyp0 = prisma.transcribe(audio, path.name, f0).transcript
-                hyp3 = lexicon.apply(prisma.transcribe(audio, path.name, f2).transcript)
-                for setting, hyp in (("F0", hyp0), ("F3", hyp3)):
-                    sc = score_utterance(text, hyp)
-                    row[f"{cond}_{setting}"] = hyp
-                    row[f"{cond}_{setting}_cer"] = sc.char_edits / sc.char_ref if sc.char_ref else 0.0
-                    scores.setdefault((cond, setting), []).append(sc)
-            rows.append(row)
+    for r in by_text.values():
+        for key, sc in r.pop("scores").items():
+            scores.setdefault(key, []).append(sc)
     overall = {f"{c}_{s}": corpus_cer(v) for (c, s), v in scores.items()}
-    return {"rows": rows, "overall_cer": overall, "n": len(rows), "conditions": (clean_cond, noisy_cond)}
+    return {
+        "rows": rows,
+        "overall_cer": overall,
+        "n": len(by_text),
+        "conditions": (clean_cond, noisy_cond),
+        "stats": {"elapsed_ms": round((time.perf_counter() - start) * 1000), "new_api_calls": new_calls,
+                  "duplicates_skipped": len(sentences) - len(unique)},
+    }
 
 
-def run_voice_job(audio: bytes, filename: str, prisma: Any, noise: NoiseBank, reference: str = "", seed: int = 42) -> dict[str, Any]:
-    """User recording -> clean (C1) and phone + light noise (C3, or C2 without noise clips) -> Prisma F0.
+def run_voice_job(
+    audio: bytes,
+    filename: str,
+    prisma: Any,
+    noise: NoiseBank,
+    reference: str = "",
+    seed: int = 42,
+    bias_words: tuple[str, ...] = (),
+    lexicon: Lexicon | None = None,
+) -> dict[str, Any]:
+    """User recording -> clean (C1) and phone + light noise (C3, or C2 without noise clips)
+    -> Prisma F0 and F3 (fix layer), all four calls in parallel.
     Audio stays in a temp dir that is deleted on return."""
+    start = time.perf_counter()
     phone_cond = "C3" if noise.clips else "C2"
+    lexicon = lexicon or Lexicon([])
     f0 = PrismaSettings(format="verbatim")
+    f2 = PrismaSettings(format="transcribe", bias_list=bias_words, bias_score=BIAS_SCORE if bias_words else None)
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
         src = tmpdir / (Path(filename).name or "voice.wav")
@@ -196,16 +245,22 @@ def run_voice_job(audio: bytes, filename: str, prisma: Any, noise: NoiseBank, re
         if seconds < 0.3:
             raise ValueError("Recording is too short.")
         result: dict[str, Any] = {"seconds": round(seconds, 1), "phone_condition": phone_cond, "audio": {}}
-        for cond in ("C1", phone_cond):
-            path = tmpdir / cond / "voice.wav"
-            build_condition(clean, f"voice-{time.time_ns()}", CONDITIONS[cond], path, noise, seed)
-            data = path.read_bytes()
-            result["audio"][cond] = data
-            hyp = prisma.transcribe(data, "voice.wav", f0).transcript
-            result[cond] = hyp
-            if reference.strip():
-                sc = score_utterance(reference, hyp)
-                result[f"{cond}_cer"] = sc.char_edits / sc.char_ref if sc.char_ref else 0.0
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            jobs = {}
+            for cond in ("C1", phone_cond):
+                path = tmpdir / cond / "voice.wav"
+                build_condition(clean, f"voice-{time.time_ns()}", CONDITIONS[cond], path, noise, seed)
+                data = path.read_bytes()
+                result["audio"][cond] = data
+                jobs[cond] = pool.submit(_transcribe_pair, prisma, data, "voice.wav", f0, f2, lexicon, pool)
+            for cond, fut in jobs.items():
+                hyp0, hyp3, _ = fut.result()
+                result[cond], result[f"{cond}_F3"] = hyp0, hyp3
+                if reference.strip():
+                    for key, hyp in ((f"{cond}_cer", hyp0), (f"{cond}_F3_cer", hyp3)):
+                        sc = score_utterance(reference, hyp)
+                        result[key] = sc.char_edits / sc.char_ref if sc.char_ref else 0.0
         result["sample_rates"] = {c: sf.info(io.BytesIO(result["audio"][c])).samplerate for c in result["audio"]}
+        result["elapsed_ms"] = round((time.perf_counter() - start) * 1000)
     return result
 

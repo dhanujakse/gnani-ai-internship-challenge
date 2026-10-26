@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KuralCheck Tester</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon48.png" alt="" />
+      <div>
+        <h1>KuralCheck Tester</h1>
+        <div class="sub">How well does Gnani Prisma hear Tamil — clean vs a noisy phone line?</div>
+      </div>
+      <span id="health" class="pill">checking server…</span>
+    </header>
+
+    <nav role="tablist">
+      <button role="tab" data-tab="text" aria-selected="true">Test text</button>
+      <button role="tab" data-tab="voice">Test voice</button>
+      <button role="tab" data-tab="score">Score a transcript</button>
+      <button role="tab" data-tab="fix">Fix a transcript</button>
+      <button role="tab" data-tab="bench">Benchmark</button>
+      <button role="tab" data-tab="settings">Settings</button>
+    </nav>
+
+    <main>
+      <section id="tab-text">
+        <h2>Test Tamil sentences</h2>
+        <p class="help">Up to 10 sentences, one per line, numbers written as words. Gnani Timbre speaks them, we build a clean and a noisy phone-line version, and Prisma transcribes each one raw (F0) and with the KuralCheck fix layer (F3).</p>
+        <textarea id="text-input" class="ta" placeholder="நாளைக்கு காலையில பத்து மணிக்கு கடைக்கு வாங்க&#10;என் போன் சார்ஜ் ஆகல"></textarea>
+        <div class="row">
+          <div><label for="voice">Timbre voice</label><select id="voice"></select></div>
+        </div>
+        <div class="actions">
+          <button id="run-text" class="primary">Run test</button>
+          <span id="text-status" class="status"></span>
+        </div>
+        <div id="text-error"></div>
+        <div id="text-results"></div>
+      </section>
+
+      <section id="tab-voice" hidden>
+        <h2>Test your own voice</h2>
+        <p class="help">Speak one Tamil sentence the way you normally talk (up to 30 s). It is sent to Prisma as recorded and through a simulated noisy phone line. Nothing is stored.</p>
+        <div class="actions">
+          <button id="rec" class="primary">● Record</button>
+          <span id="rec-state" class="status"></span>
+          <label class="secondary" style="margin:0"><input id="voice-file" type="file" accept="audio/*" /> </label>
+        </div>
+        <audio id="voice-preview" controls hidden></audio>
+        <label for="voice-ref">What did you say? (optional, to score it)</label>
+        <input id="voice-ref" type="text" class="ta" />
+        <div class="actions">
+          <button id="run-voice" class="primary" disabled>Transcribe</button>
+          <span id="voice-status" class="status"></span>
+        </div>
+        <div id="voice-error"></div>
+        <div id="voice-results"></div>
+      </section>
+
+      <section id="tab-score" hidden>
+        <h2>Score a transcript</h2>
+        <p class="help">Character and word error rate after KuralCheck normalisation, with number checking. Runs on the server, uses no API credits.</p>
+        <label for="score-ref">Reference (what was said)</label>
+        <textarea id="score-ref" class="ta" style="min-height:70px"></textarea>
+        <label for="score-hyp">Transcript (what the system wrote)</label>
+        <textarea id="score-hyp" class="ta" style="min-height:70px"></textarea>
+        <label for="score-var">Accepted spellings (optional, separated by |, e.g. அவர்கள்=அவங்க|பத்து=10)</label>
+        <input id="score-var" type="text" class="ta" />
+        <div class="actions"><button id="run-score" class="primary">Score</button><span id="score-status" class="status"></span></div>
+        <div id="score-results"></div>
+      </section>
+
+      <section id="tab-fix" hidden>
+        <h2>Fix a Prisma transcript</h2>
+        <p class="help">Applies the KuralCheck fix layer (format rules such as ₹25 → 25 ரூபாய், plus spelling rules tuned on the dev split). No API credits.</p>
+        <textarea id="fix-in" class="ta" style="min-height:80px"></textarea>
+        <div class="actions"><button id="run-fix" class="primary">Fix</button><span id="fix-status" class="status"></span></div>
+        <div id="fix-results"></div>
+      </section>
+
+      <section id="tab-bench" hidden>
+        <h2>Benchmark results</h2>
+        <p class="help">Headline numbers from the latest KuralCheck run (test split). CER in % with bootstrap 95% CI; n = utterances.</p>
+        <div id="bench-results"><span class="status">Loading…</span></div>
+      </section>
+
+      <section id="tab-settings" hidden>
+        <h2>Settings</h2>
+        <p class="help">The extension talks to your KuralCheck server; your Gnani key stays on the server.</p>
+        <label for="set-server">Server URL</label>
+        <input id="set-server" type="text" placeholder="http://127.0.0.1:8765" />
+        <label for="set-token">API token (only if the server sets KURALCHECK_API_TOKEN)</label>
+        <input id="set-token" type="password" />
+        <div class="actions"><button id="save-settings" class="primary">Save</button><span id="settings-status" class="status"></span></div>
+        <div class="card">
+          <h3>Start the server</h3>
+          <p>In the project folder: <code>uv run uvicorn kuralcheck.api:app --port 8765</code></p>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

@@ -26,7 +26,7 @@ MIN_SUPPORT = 2
 # Generic Prisma ITN formats (seen on dev) -> how references write them. Candidates, not rules:
 # each one must prove itself on dev.
 FORMAT_CANDIDATES = [
-    FormatRule(r"₹\s*([\d,]+(?:\.\d+)?)", r"\1 ரூபாய்", "currency symbol -> number + ரூபாய்"),
+    FormatRule(r"₹\s*(\d(?:[\d,]*\d)?(?:\.\d+)?)", r"\1 ரூபாய்", "currency symbol -> number + ரூபாய்"),
     FormatRule(r"(?<![\d:])0(\d):(\d\d)", r"\1:\2", "drop leading zero in times (03:40 -> 3:40)"),
     FormatRule(r"(?<![\d:])(\d{1,2}):00(?!\d)", r"\1", "whole hours (10:00 -> 10)"),
     FormatRule(r"(?<![\d:])(\d{1,2}):(\d\d) மணி", r"\1 மணி \2", "H:MM மணி -> H மணி MM"),

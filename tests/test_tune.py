@@ -1,5 +1,6 @@
 import pytest
 
+from kuralcheck.fixlayer.lexicon import Lexicon
 from kuralcheck.fixlayer.tune import edit_ratio, mine_bias_words, tune_rules
 from kuralcheck.metrics import score_utterance
 from kuralcheck.runner import score_fields
@@ -56,3 +57,12 @@ def test_bias_words_from_f1_errors() -> None:
     recs = [rec("அவங்க வந்தாங்க", "அவர்கள் வந்தாங்க", setting="F1", sid=f"x{i}") for i in range(3)]
     recs.append(rec("சரி", "சரி", setting="F0"))
     assert mine_bias_words(recs) == ["அவங்க"]
+
+
+def test_currency_rule_leaves_trailing_comma() -> None:
+    from kuralcheck.fixlayer.tune import FORMAT_CANDIDATES
+
+    lex = Lexicon([], [FORMAT_CANDIDATES[0]])
+    assert lex.apply("தக்காளி ₹25, வாங்க") == "தக்காளி 25 ரூபாய், வாங்க"
+    assert lex.apply("₹12,000") == "12,000 ரூபாய்"
+    assert lex.apply("₹2.50 மட்டும்") == "2.50 ரூபாய் மட்டும்"

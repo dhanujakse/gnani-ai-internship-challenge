@@ -1,0 +1,1977 @@
+{
+  "run": {
+    "split": "test",
+    "source": "all",
+    "conditions": [
+      "C1",
+      "C2",
+      "C3",
+      "C4"
+    ],
+    "settings": [
+      "F0",
+      "F1",
+      "F2",
+      "F3"
+    ],
+    "models": {
+      "stt": "gnani-prisma (stt/v3)",
+      "stt_version": "Prisma v2.5",
+      "tts": "timbre-v2.5"
+    },
+    "bias_words": {
+      "n": 9,
+      "sha": "6b21f260bfea"
+    },
+    "lexicon": {
+      "n_rules": 1,
+      "sha": "afca841fa101"
+    },
+    "created_at": "2026-10-26T19:01:44+00:00",
+    "git_commit": "7d4768a",
+    "n_records": 1920,
+    "n_failures": 19,
+    "n_utterances": 120,
+    "prisma_calls": {
+      "unique": 1426,
+      "new": 1426,
+      "from_cache": 0
+    },
+    "latency_ms": {
+      "p50": 279.9,
+      "p95": 1052.2,
+      "n": 1426
+    },
+    "latency_ms_by_condition": {
+      "C1": {
+        "p50": 307.4,
+        "p95": 1249.6,
+        "n": 357
+      },
+      "C2": {
+        "p50": 260.0,
+        "p95": 998.1,
+        "n": 356
+      },
+      "C3": {
+        "p50": 269.1,
+        "p95": 1067.4,
+        "n": 356
+      },
+      "C4": {
+        "p50": 274.8,
+        "p95": 983.5,
+        "n": 357
+      }
+    }
+  },
+  "overall": [
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C1",
+      "setting": "F0",
+      "n": 119,
+      "cer": {
+        "value": 0.00940940940940941,
+        "low": 0.0051844127332148155,
+        "high": 0.014217421999283553,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.047697368421052634,
+        "low": 0.02805049830640959,
+        "high": 0.06880131147540984,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C1",
+      "setting": "F1",
+      "n": 119,
+      "cer": {
+        "value": 0.032779906343124735,
+        "low": 0.018680320254415652,
+        "high": 0.04930284766396703,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.07807308970099668,
+        "low": 0.05315202884970327,
+        "high": 0.10490926395939086,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C1",
+      "setting": "F2",
+      "n": 119,
+      "cer": {
+        "value": 0.032779906343124735,
+        "low": 0.018680320254415652,
+        "high": 0.04930284766396703,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.07807308970099668,
+        "low": 0.05315202884970327,
+        "high": 0.10490926395939086,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C1",
+      "setting": "F3",
+      "n": 119,
+      "cer": {
+        "value": 0.022222222222222223,
+        "low": 0.011920406385961218,
+        "high": 0.033614403208091746,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.07046979865771812,
+        "low": 0.04661819837662913,
+        "high": 0.09468832400042011,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C2",
+      "setting": "F0",
+      "n": 118,
+      "cer": {
+        "value": 0.011117849201536285,
+        "low": 0.006257075288474305,
+        "high": 0.016702785876786988,
+        "n": 118
+      },
+      "wer": {
+        "value": 0.054635761589403975,
+        "low": 0.03333333333333333,
+        "high": 0.07730900968386312,
+        "n": 118
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 2
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C2",
+      "setting": "F1",
+      "n": 119,
+      "cer": {
+        "value": 0.034057045551298425,
+        "low": 0.020211905556184812,
+        "high": 0.05155386621282518,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.08305647840531562,
+        "low": 0.05752961082910321,
+        "high": 0.11165695516920111,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C2",
+      "setting": "F2",
+      "n": 119,
+      "cer": {
+        "value": 0.034057045551298425,
+        "low": 0.020211905556184812,
+        "high": 0.05155386621282518,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.08305647840531562,
+        "low": 0.05752961082910321,
+        "high": 0.11165695516920111,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C2",
+      "setting": "F3",
+      "n": 119,
+      "cer": {
+        "value": 0.023504273504273504,
+        "low": 0.013371328364752301,
+        "high": 0.03545198697213781,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.07550335570469799,
+        "low": 0.050496604844430935,
+        "high": 0.10000431778929188,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C3",
+      "setting": "F0",
+      "n": 119,
+      "cer": {
+        "value": 0.012214657589106928,
+        "low": 0.007303522579958729,
+        "high": 0.018041250175025756,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.057660626029654036,
+        "low": 0.03553948991398507,
+        "high": 0.08278509126150864,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C3",
+      "setting": "F1",
+      "n": 119,
+      "cer": {
+        "value": 0.03534170747285501,
+        "low": 0.021450144458487485,
+        "high": 0.051528168704341855,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.08652246256239601,
+        "low": 0.059422750424448216,
+        "high": 0.11610286132787836,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C3",
+      "setting": "F2",
+      "n": 118,
+      "cer": {
+        "value": 0.03401797175866496,
+        "low": 0.020024975427306486,
+        "high": 0.050872878922068834,
+        "n": 118
+      },
+      "wer": {
+        "value": 0.08542713567839195,
+        "low": 0.05953630518941839,
+        "high": 0.11474083712540965,
+        "n": 118
+      },
+      "number_accuracy": {
+        "value": 0.9736842105263158,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 29
+      },
+      "failures": 2
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C3",
+      "setting": "F3",
+      "n": 118,
+      "cer": {
+        "value": 0.02491408934707904,
+        "low": 0.014583739167816334,
+        "high": 0.037130149451498624,
+        "n": 118
+      },
+      "wer": {
+        "value": 0.07952622673434856,
+        "low": 0.05387205387205387,
+        "high": 0.10767038921758797,
+        "n": 118
+      },
+      "number_accuracy": {
+        "value": 0.9736842105263158,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 29
+      },
+      "failures": 2
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C4",
+      "setting": "F0",
+      "n": 119,
+      "cer": {
+        "value": 0.03009630818619583,
+        "low": 0.02046270152416936,
+        "high": 0.04056278190742616,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.10361842105263158,
+        "low": 0.07524350048144583,
+        "high": 0.13559534962950345,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C4",
+      "setting": "F1",
+      "n": 119,
+      "cer": {
+        "value": 0.054595862657283,
+        "low": 0.038072636501766094,
+        "high": 0.07221479277295387,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.129783693843594,
+        "low": 0.0959332795807297,
+        "high": 0.16582766927643466,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C4",
+      "setting": "F2",
+      "n": 119,
+      "cer": {
+        "value": 0.053742802303262956,
+        "low": 0.03756516599012956,
+        "high": 0.07100499247186279,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.1264559068219634,
+        "low": 0.09433012536406232,
+        "high": 0.16118398855748794,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "condition": "C4",
+      "setting": "F3",
+      "n": 119,
+      "cer": {
+        "value": 0.04278990158322636,
+        "low": 0.03004663250053505,
+        "high": 0.05670743347173122,
+        "n": 119
+      },
+      "wer": {
+        "value": 0.1174496644295302,
+        "low": 0.08837120944369832,
+        "high": 0.14827751700066197,
+        "n": 119
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 1
+    }
+  ],
+  "by_category": [
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C1",
+      "setting": "F0",
+      "n": 30,
+      "cer": {
+        "value": 0.013787510137875101,
+        "low": 0.005662294098396423,
+        "high": 0.022695394498675386,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.09219858156028368,
+        "low": 0.041088901313950245,
+        "high": 0.15384615384615385,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C1",
+      "setting": "F1",
+      "n": 30,
+      "cer": {
+        "value": 0.013787510137875101,
+        "low": 0.005662294098396423,
+        "high": 0.022695394498675386,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.09219858156028368,
+        "low": 0.041088901313950245,
+        "high": 0.15384615384615385,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C1",
+      "setting": "F2",
+      "n": 30,
+      "cer": {
+        "value": 0.013787510137875101,
+        "low": 0.005662294098396423,
+        "high": 0.022695394498675386,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.09219858156028368,
+        "low": 0.041088901313950245,
+        "high": 0.15384615384615385,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C1",
+      "setting": "F3",
+      "n": 30,
+      "cer": {
+        "value": 0.013787510137875101,
+        "low": 0.005662294098396423,
+        "high": 0.022695394498675386,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.09219858156028368,
+        "low": 0.041088901313950245,
+        "high": 0.15384615384615385,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C2",
+      "setting": "F0",
+      "n": 30,
+      "cer": {
+        "value": 0.0170316301703163,
+        "low": 0.006059952978056427,
+        "high": 0.030513552974036687,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.10638297872340426,
+        "low": 0.048925902864259053,
+        "high": 0.17362689393939393,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C2",
+      "setting": "F1",
+      "n": 30,
+      "cer": {
+        "value": 0.0170316301703163,
+        "low": 0.006059952978056427,
+        "high": 0.030513552974036687,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.10638297872340426,
+        "low": 0.048925902864259053,
+        "high": 0.17362689393939393,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C2",
+      "setting": "F2",
+      "n": 30,
+      "cer": {
+        "value": 0.0170316301703163,
+        "low": 0.006059952978056427,
+        "high": 0.030513552974036687,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.10638297872340426,
+        "low": 0.048925902864259053,
+        "high": 0.17362689393939393,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C2",
+      "setting": "F3",
+      "n": 30,
+      "cer": {
+        "value": 0.0170316301703163,
+        "low": 0.006059952978056427,
+        "high": 0.030513552974036687,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.10638297872340426,
+        "low": 0.048925902864259053,
+        "high": 0.17362689393939393,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C3",
+      "setting": "F0",
+      "n": 30,
+      "cer": {
+        "value": 0.025952960259529603,
+        "low": 0.010855725006051807,
+        "high": 0.04471544946481007,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.1276595744680851,
+        "low": 0.06755748285599034,
+        "high": 0.1985827747012533,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C3",
+      "setting": "F1",
+      "n": 30,
+      "cer": {
+        "value": 0.025952960259529603,
+        "low": 0.010855725006051807,
+        "high": 0.04471544946481007,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.1276595744680851,
+        "low": 0.06755748285599034,
+        "high": 0.1985827747012533,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C3",
+      "setting": "F2",
+      "n": 30,
+      "cer": {
+        "value": 0.025952960259529603,
+        "low": 0.010855725006051807,
+        "high": 0.04471544946481007,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.1276595744680851,
+        "low": 0.06755748285599034,
+        "high": 0.1985827747012533,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C3",
+      "setting": "F3",
+      "n": 30,
+      "cer": {
+        "value": 0.025952960259529603,
+        "low": 0.010855725006051807,
+        "high": 0.04471544946481007,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.1276595744680851,
+        "low": 0.06755748285599034,
+        "high": 0.1985827747012533,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C4",
+      "setting": "F0",
+      "n": 30,
+      "cer": {
+        "value": 0.05117790414297319,
+        "low": 0.029983756813848655,
+        "high": 0.07531975691015905,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.2127659574468085,
+        "low": 0.137656396621833,
+        "high": 0.29928832116788323,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C4",
+      "setting": "F1",
+      "n": 30,
+      "cer": {
+        "value": 0.05117790414297319,
+        "low": 0.029983756813848655,
+        "high": 0.07531975691015905,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.2127659574468085,
+        "low": 0.137656396621833,
+        "high": 0.29928832116788323,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C4",
+      "setting": "F2",
+      "n": 30,
+      "cer": {
+        "value": 0.05117790414297319,
+        "low": 0.029983756813848655,
+        "high": 0.07531975691015905,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.2127659574468085,
+        "low": 0.137656396621833,
+        "high": 0.29928832116788323,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C4",
+      "setting": "F3",
+      "n": 30,
+      "cer": {
+        "value": 0.05117790414297319,
+        "low": 0.029983756813848655,
+        "high": 0.07531975691015905,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.2127659574468085,
+        "low": 0.137656396621833,
+        "high": 0.29928832116788323,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C1",
+      "setting": "F0",
+      "n": 39,
+      "cer": {
+        "value": 0.00599250936329588,
+        "low": 0.0014305895995606918,
+        "high": 0.012490730279986742,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.027777777777777776,
+        "low": 0.0053475935828877,
+        "high": 0.06011754638803818,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C1",
+      "setting": "F1",
+      "n": 39,
+      "cer": {
+        "value": 0.00599250936329588,
+        "low": 0.0014305895995606918,
+        "high": 0.012490730279986742,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.027777777777777776,
+        "low": 0.0053475935828877,
+        "high": 0.06011754638803818,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C1",
+      "setting": "F2",
+      "n": 39,
+      "cer": {
+        "value": 0.00599250936329588,
+        "low": 0.0014305895995606918,
+        "high": 0.012490730279986742,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.027777777777777776,
+        "low": 0.0053475935828877,
+        "high": 0.06011754638803818,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C1",
+      "setting": "F3",
+      "n": 39,
+      "cer": {
+        "value": 0.00599250936329588,
+        "low": 0.0014305895995606918,
+        "high": 0.012490730279986742,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.027777777777777776,
+        "low": 0.0053475935828877,
+        "high": 0.06011754638803818,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C2",
+      "setting": "F0",
+      "n": 39,
+      "cer": {
+        "value": 0.00599250936329588,
+        "low": 0.0014305895995606918,
+        "high": 0.012490730279986742,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.027777777777777776,
+        "low": 0.0053475935828877,
+        "high": 0.06011754638803818,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C2",
+      "setting": "F1",
+      "n": 39,
+      "cer": {
+        "value": 0.00599250936329588,
+        "low": 0.0014305895995606918,
+        "high": 0.012490730279986742,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.027777777777777776,
+        "low": 0.0053475935828877,
+        "high": 0.06011754638803818,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C2",
+      "setting": "F2",
+      "n": 39,
+      "cer": {
+        "value": 0.00599250936329588,
+        "low": 0.0014305895995606918,
+        "high": 0.012490730279986742,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.027777777777777776,
+        "low": 0.0053475935828877,
+        "high": 0.06011754638803818,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C2",
+      "setting": "F3",
+      "n": 39,
+      "cer": {
+        "value": 0.00599250936329588,
+        "low": 0.0014305895995606918,
+        "high": 0.012490730279986742,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.027777777777777776,
+        "low": 0.0053475935828877,
+        "high": 0.06011754638803818,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C3",
+      "setting": "F0",
+      "n": 39,
+      "cer": {
+        "value": 0.004497751124437781,
+        "low": 0.0,
+        "high": 0.010263929618768328,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.01675977653631285,
+        "low": 0.0,
+        "high": 0.037639494333042714,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C3",
+      "setting": "F1",
+      "n": 39,
+      "cer": {
+        "value": 0.004497751124437781,
+        "low": 0.0,
+        "high": 0.010263929618768328,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.01675977653631285,
+        "low": 0.0,
+        "high": 0.037639494333042714,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C3",
+      "setting": "F2",
+      "n": 39,
+      "cer": {
+        "value": 0.004497751124437781,
+        "low": 0.0,
+        "high": 0.010263929618768328,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.01675977653631285,
+        "low": 0.0,
+        "high": 0.037639494333042714,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C3",
+      "setting": "F3",
+      "n": 39,
+      "cer": {
+        "value": 0.004497751124437781,
+        "low": 0.0,
+        "high": 0.010263929618768328,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.01675977653631285,
+        "low": 0.0,
+        "high": 0.037639494333042714,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C4",
+      "setting": "F0",
+      "n": 39,
+      "cer": {
+        "value": 0.037509377344336084,
+        "low": 0.013421820812853971,
+        "high": 0.06617171304821133,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.07865168539325842,
+        "low": 0.03296703296703297,
+        "high": 0.13714285714285715,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C4",
+      "setting": "F1",
+      "n": 39,
+      "cer": {
+        "value": 0.037509377344336084,
+        "low": 0.013421820812853971,
+        "high": 0.06617171304821133,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.07865168539325842,
+        "low": 0.03296703296703297,
+        "high": 0.13714285714285715,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C4",
+      "setting": "F2",
+      "n": 39,
+      "cer": {
+        "value": 0.0345086271567892,
+        "low": 0.011089836762075138,
+        "high": 0.06320106983739605,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.06741573033707865,
+        "low": 0.026737967914438502,
+        "high": 0.12363061797752806,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C4",
+      "setting": "F3",
+      "n": 39,
+      "cer": {
+        "value": 0.0345086271567892,
+        "low": 0.011089836762075138,
+        "high": 0.06320106983739605,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.06741573033707865,
+        "low": 0.026737967914438502,
+        "high": 0.12363061797752806,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C1",
+      "setting": "F0",
+      "n": 20,
+      "cer": {
+        "value": 0.0074309978768577496,
+        "low": 0.0011235325238071246,
+        "high": 0.014634401469537709,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.04807692307692308,
+        "low": 0.010101010101010102,
+        "high": 0.09650613183444046,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C1",
+      "setting": "F1",
+      "n": 20,
+      "cer": {
+        "value": 0.0074309978768577496,
+        "low": 0.0011235325238071246,
+        "high": 0.014634401469537709,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.04807692307692308,
+        "low": 0.010101010101010102,
+        "high": 0.09650613183444046,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C1",
+      "setting": "F2",
+      "n": 20,
+      "cer": {
+        "value": 0.0074309978768577496,
+        "low": 0.0011235325238071246,
+        "high": 0.014634401469537709,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.04807692307692308,
+        "low": 0.010101010101010102,
+        "high": 0.09650613183444046,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C1",
+      "setting": "F3",
+      "n": 20,
+      "cer": {
+        "value": 0.0074309978768577496,
+        "low": 0.0011235325238071246,
+        "high": 0.014634401469537709,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.04807692307692308,
+        "low": 0.010101010101010102,
+        "high": 0.09650613183444046,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C2",
+      "setting": "F0",
+      "n": 19,
+      "cer": {
+        "value": 0.007829977628635347,
+        "low": 0.0011477476562764414,
+        "high": 0.01511879049676026,
+        "n": 19
+      },
+      "wer": {
+        "value": 0.05,
+        "low": 0.010523574561403511,
+        "high": 0.09615384615384616,
+        "n": 19
+      },
+      "number_accuracy": null,
+      "failures": 2
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C2",
+      "setting": "F1",
+      "n": 20,
+      "cer": {
+        "value": 0.0074309978768577496,
+        "low": 0.0011235325238071246,
+        "high": 0.014634401469537709,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.04807692307692308,
+        "low": 0.010101010101010102,
+        "high": 0.09650613183444046,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C2",
+      "setting": "F2",
+      "n": 20,
+      "cer": {
+        "value": 0.0074309978768577496,
+        "low": 0.0011235325238071246,
+        "high": 0.014634401469537709,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.04807692307692308,
+        "low": 0.010101010101010102,
+        "high": 0.09650613183444046,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C2",
+      "setting": "F3",
+      "n": 20,
+      "cer": {
+        "value": 0.0074309978768577496,
+        "low": 0.0011235325238071246,
+        "high": 0.014634401469537709,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.04807692307692308,
+        "low": 0.010101010101010102,
+        "high": 0.09650613183444046,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C3",
+      "setting": "F0",
+      "n": 20,
+      "cer": {
+        "value": 0.008492569002123142,
+        "low": 0.0011061641324011148,
+        "high": 0.01736961930507731,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.057692307692307696,
+        "low": 0.009708737864077669,
+        "high": 0.11764705882352941,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C3",
+      "setting": "F1",
+      "n": 20,
+      "cer": {
+        "value": 0.008492569002123142,
+        "low": 0.0011061641324011148,
+        "high": 0.01736961930507731,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.057692307692307696,
+        "low": 0.009708737864077669,
+        "high": 0.11764705882352941,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C3",
+      "setting": "F2",
+      "n": 20,
+      "cer": {
+        "value": 0.008492569002123142,
+        "low": 0.0011061641324011148,
+        "high": 0.01736961930507731,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.057692307692307696,
+        "low": 0.009708737864077669,
+        "high": 0.11764705882352941,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C3",
+      "setting": "F3",
+      "n": 20,
+      "cer": {
+        "value": 0.008492569002123142,
+        "low": 0.0011061641324011148,
+        "high": 0.01736961930507731,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.057692307692307696,
+        "low": 0.009708737864077669,
+        "high": 0.11764705882352941,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C4",
+      "setting": "F0",
+      "n": 20,
+      "cer": {
+        "value": 0.014893617021276596,
+        "low": 0.005609045669618359,
+        "high": 0.026178142283945736,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.07547169811320754,
+        "low": 0.03091994529770672,
+        "high": 0.12176168990976208,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C4",
+      "setting": "F1",
+      "n": 20,
+      "cer": {
+        "value": 0.014893617021276596,
+        "low": 0.005609045669618359,
+        "high": 0.026178142283945736,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.07547169811320754,
+        "low": 0.03091994529770672,
+        "high": 0.12176168990976208,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C4",
+      "setting": "F2",
+      "n": 20,
+      "cer": {
+        "value": 0.014893617021276596,
+        "low": 0.005609045669618359,
+        "high": 0.026178142283945736,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.07547169811320754,
+        "low": 0.03091994529770672,
+        "high": 0.12176168990976208,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C4",
+      "setting": "F3",
+      "n": 20,
+      "cer": {
+        "value": 0.014893617021276596,
+        "low": 0.005609045669618359,
+        "high": 0.026178142283945736,
+        "n": 20
+      },
+      "wer": {
+        "value": 0.07547169811320754,
+        "low": 0.03091994529770672,
+        "high": 0.12176168990976208,
+        "n": 20
+      },
+      "number_accuracy": null,
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C1",
+      "setting": "F0",
+      "n": 30,
+      "cer": {
+        "value": 0.010101010101010102,
+        "low": 0.0013566917728587435,
+        "high": 0.024240599017384727,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.03278688524590164,
+        "low": 0.005463738417676408,
+        "high": 0.07103825136612021,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C1",
+      "setting": "F1",
+      "n": 30,
+      "cer": {
+        "value": 0.1026936026936027,
+        "low": 0.05587406444814214,
+        "high": 0.156390249146548,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.13559322033898305,
+        "low": 0.08137195936915266,
+        "high": 0.19653179190751446,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C1",
+      "setting": "F2",
+      "n": 30,
+      "cer": {
+        "value": 0.1026936026936027,
+        "low": 0.05587406444814214,
+        "high": 0.156390249146548,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.13559322033898305,
+        "low": 0.08137195936915266,
+        "high": 0.19653179190751446,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C1",
+      "setting": "F3",
+      "n": 30,
+      "cer": {
+        "value": 0.06153846153846154,
+        "low": 0.026896907647563507,
+        "high": 0.10182756536584248,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.1111111111111111,
+        "low": 0.06058791507893306,
+        "high": 0.16168097331348863,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C2",
+      "setting": "F0",
+      "n": 30,
+      "cer": {
+        "value": 0.012794612794612794,
+        "low": 0.0033664403229620625,
+        "high": 0.027197039175369017,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.04371584699453552,
+        "low": 0.01586886063325854,
+        "high": 0.08241758241758242,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C2",
+      "setting": "F1",
+      "n": 30,
+      "cer": {
+        "value": 0.10437710437710437,
+        "low": 0.05696721311475412,
+        "high": 0.15767023770426827,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.14124293785310735,
+        "low": 0.0866717185957987,
+        "high": 0.2021889510091917,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C2",
+      "setting": "F2",
+      "n": 30,
+      "cer": {
+        "value": 0.10437710437710437,
+        "low": 0.05696721311475412,
+        "high": 0.15767023770426827,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.14124293785310735,
+        "low": 0.0866717185957987,
+        "high": 0.2021889510091917,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C2",
+      "setting": "F3",
+      "n": 30,
+      "cer": {
+        "value": 0.06324786324786325,
+        "low": 0.02894461444308446,
+        "high": 0.10252232104659717,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.11695906432748537,
+        "low": 0.0674829392706969,
+        "high": 0.1638418079096045,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C3",
+      "setting": "F0",
+      "n": 30,
+      "cer": {
+        "value": 0.010101010101010102,
+        "low": 0.0026187943442898304,
+        "high": 0.020437634257457146,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.04371584699453552,
+        "low": 0.010638297872340425,
+        "high": 0.08939802900006276,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C3",
+      "setting": "F1",
+      "n": 30,
+      "cer": {
+        "value": 0.10101010101010101,
+        "low": 0.054181060033113265,
+        "high": 0.15481277863630802,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.14124293785310735,
+        "low": 0.0866717185957987,
+        "high": 0.2021889510091917,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C3",
+      "setting": "F2",
+      "n": 29,
+      "cer": {
+        "value": 0.09699570815450644,
+        "low": 0.04909981571939376,
+        "high": 0.15468745251000451,
+        "n": 29
+      },
+      "wer": {
+        "value": 0.13872832369942195,
+        "low": 0.08043691222570534,
+        "high": 0.2046783625730994,
+        "n": 29
+      },
+      "number_accuracy": {
+        "value": 0.9736842105263158,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 29
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C3",
+      "setting": "F3",
+      "n": 29,
+      "cer": {
+        "value": 0.06102877070619006,
+        "low": 0.029165883458646617,
+        "high": 0.10179740511026292,
+        "n": 29
+      },
+      "wer": {
+        "value": 0.11976047904191617,
+        "low": 0.07058634992458522,
+        "high": 0.17045788770053474,
+        "n": 29
+      },
+      "number_accuracy": {
+        "value": 0.9736842105263158,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 29
+      },
+      "failures": 1
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C4",
+      "setting": "F0",
+      "n": 30,
+      "cer": {
+        "value": 0.015540540540540541,
+        "low": 0.005329426008353236,
+        "high": 0.026405939439284175,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.060109289617486336,
+        "low": 0.021502501293772645,
+        "high": 0.10285714285714286,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C4",
+      "setting": "F1",
+      "n": 30,
+      "cer": {
+        "value": 0.10886075949367088,
+        "low": 0.06085021128345748,
+        "high": 0.16237707306140745,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.14772727272727273,
+        "low": 0.08888888888888889,
+        "high": 0.2086002218293993,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C4",
+      "setting": "F2",
+      "n": 30,
+      "cer": {
+        "value": 0.10886075949367088,
+        "low": 0.06085021128345748,
+        "high": 0.16237707306140745,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.14772727272727273,
+        "low": 0.08888888888888889,
+        "high": 0.2086002218293993,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "gnani-prisma (stt/v3)",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C4",
+      "setting": "F3",
+      "n": 30,
+      "cer": {
+        "value": 0.06581196581196581,
+        "low": 0.03236728406248867,
+        "high": 0.10539946607521462,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.11695906432748537,
+        "low": 0.06933813233762971,
+        "high": 0.16279069767441862,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.9743589743589743,
+        "low": 0.9142857142857143,
+        "high": 1.0,
+        "n": 30
+      },
+      "failures": 0
+    }
+  ],
+  "by_dialect": []
+}

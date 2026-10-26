@@ -51,7 +51,7 @@ if st.button("Transcribe", type="primary", disabled=source is None or left <= 0)
             result = run_voice_job(
                 source.getvalue(), getattr(source, "name", "voice.wav") or "voice.wav",
                 PrismaClient(key, cache=None, throttle=ui.throttle()),  # never cache user recordings or their transcripts
-                ui.noise_bank(), reference,
+                ui.noise_bank(), reference, bias_words=ui.fix_layer()[0], lexicon=ui.fix_layer()[1],
             )  # fmt: skip
     except (ApiError, ValueError, RuntimeError) as exc:
         st.error(str(exc))
@@ -62,11 +62,14 @@ if st.button("Transcribe", type="primary", disabled=source is None or left <= 0)
     for col, cond, title in ((a, "C1", "As recorded"), (b, phone, CONDITIONS[phone].label)):
         col.subheader(title)
         col.audio(result["audio"][cond], format="audio/wav")
-        if reference.strip():
-            col.metric("Character error rate", f"{100 * result[f'{cond}_cer']:.0f}%")
-            col.markdown(f"<div class='kc-diff'>{diff_html(reference, result[cond])}</div>", unsafe_allow_html=True)
-        else:
-            col.markdown(f"<div class='kc-diff'>{result[cond] or '(nothing recognised)'}</div>", unsafe_allow_html=True)
+        for label, key in (("Prisma (raw)", cond), ("With KuralCheck fix layer", f"{cond}_F3")):
+            col.markdown(f"**{label}**")
+            if reference.strip():
+                col.caption(f"Character error rate {100 * result[f'{key}_cer' if key != cond else f'{cond}_cer']:.0f}%")
+                col.markdown(f"<div class='kc-diff'>{diff_html(reference, result[key])}</div>", unsafe_allow_html=True)
+            else:
+                col.markdown(f"<div class='kc-diff'>{result[key] or '(nothing recognised)'}</div>", unsafe_allow_html=True)
+    st.caption(f"Processed in {result['elapsed_ms'] / 1000:.1f} s.")
     if phone == "C2":
         st.caption("No noise clips on this server, so the phone version has no added noise.")
     del result  # drop audio from memory once rendered

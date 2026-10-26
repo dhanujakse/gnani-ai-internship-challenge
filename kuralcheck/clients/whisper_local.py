@@ -5,6 +5,7 @@ Results are cached like Prisma's (kind "whisper"), so re-runs are instant.
 It plugs into runner.py through the same transcribe() interface as PrismaClient.
 """
 
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -34,7 +35,10 @@ class WhisperLocal:
         return f"whisper-{self.model_size}"
 
     def _settings(self) -> dict[str, Any]:
-        return {"model": self.name, "language": self.language, "beam_size": 5, "temperature": 0.0}
+        # greedy decoding, no timestamps, no carry-over between segments: several times faster on CPU
+        # and fewer repetition loops; same settings for every condition so the comparison stays fair
+        return {"model": self.name, "language": self.language, "beam_size": 1, "temperature": 0.0,
+                "condition_on_previous_text": False, "without_timestamps": True}
 
     def _load(self) -> Any:
         if self._model is None:
@@ -42,7 +46,8 @@ class WhisperLocal:
                 from faster_whisper import WhisperModel
             except ImportError:
                 raise RuntimeError("faster-whisper is not installed: run `uv sync --group whisper`") from None
-            self._model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+            self._model = WhisperModel(self.model_size, device="cpu", compute_type="int8",
+                                       cpu_threads=os.cpu_count() or 4)
         return self._model
 
     def is_cached(self, audio: bytes, settings: PrismaSettings | None = None) -> bool:
@@ -58,7 +63,8 @@ class WhisperLocal:
             path.write_bytes(audio)
             start = time.perf_counter()
             segments, _ = model.transcribe(
-                str(path), language=self.language, beam_size=5, temperature=0.0, vad_filter=False
+                str(path), language=self.language, beam_size=1, temperature=0.0, vad_filter=False,
+                condition_on_previous_text=False, without_timestamps=True,
             )
             text = " ".join(seg.text.strip() for seg in segments).strip()
             latency_ms = (time.perf_counter() - start) * 1000
