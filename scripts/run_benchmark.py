@@ -22,7 +22,7 @@ from kuralcheck.cache import Cache  # noqa: E402
 from kuralcheck.clients.errors import ApiAuthError  # noqa: E402
 from kuralcheck.clients.prisma import PrismaClient  # noqa: E402
 from kuralcheck.config import get_settings  # noqa: E402
-from kuralcheck.data import RESULTS_DIR, ROOT, load_sentences, utterances  # noqa: E402
+from kuralcheck.data import display_path, load_sentences, results_dir, utterances  # noqa: E402
 from kuralcheck.errors import errors_markdown  # noqa: E402
 from kuralcheck.fixlayer.bias import BIAS_WORDS_TXT, file_sha, load_bias_words  # noqa: E402
 from kuralcheck.fixlayer.lexicon import VARIANTS_CSV, load_lexicon  # noqa: E402
@@ -107,14 +107,14 @@ def main() -> int:
         }
         summary = runner.summarize_run(records, meta)
         name = f"{date.today().isoformat()}_{args.split}" + (f"_{args.tag}" if args.tag else "")
-        out = RESULTS_DIR / name
+        out = results_dir() / name
         write_results(out, records, summary)
 
         calls = summary["run"]["prisma_calls"]
         print(f"Done: {calls['new']} new Prisma calls, {calls['from_cache']} from cache, "
               f"{summary['run']['n_failures']} failed records")  # fmt: skip
         print(summary_markdown(summary, headline_only=True))
-        print(f"Results: {out.relative_to(ROOT).as_posix()}/")
+        print(f"Results: {display_path(out)}/")
         return 0
     except ApiAuthError as exc:
         print(f"Stopped: {exc}")

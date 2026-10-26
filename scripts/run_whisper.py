@@ -19,7 +19,7 @@ from kuralcheck import runner  # noqa: E402
 from kuralcheck.cache import Cache  # noqa: E402
 from kuralcheck.clients.whisper_local import WhisperLocal  # noqa: E402
 from kuralcheck.config import get_settings  # noqa: E402
-from kuralcheck.data import RESULTS_DIR, ROOT, load_sentences, utterances  # noqa: E402
+from kuralcheck.data import display_path, load_sentences, results_dir, utterances  # noqa: E402
 from kuralcheck.errors import errors_markdown  # noqa: E402
 from kuralcheck.fixlayer.lexicon import Lexicon  # noqa: E402
 from kuralcheck.report.tables import summary_markdown  # noqa: E402
@@ -67,7 +67,7 @@ def main() -> int:
             "models": {"stt": whisper.name, "runtime": "faster-whisper (CTranslate2, int8, CPU)", "language": "ta"},
         }
         summary = runner.summarize_run(records, meta)
-        out = RESULTS_DIR / f"{date.today().isoformat()}_{args.split}_whisper"
+        out = results_dir() / f"{date.today().isoformat()}_{args.split}_whisper"
         out.mkdir(parents=True, exist_ok=True)
         with (out / "raw.jsonl").open("w", encoding="utf-8", newline="\n") as f:
             for r in records:
@@ -76,7 +76,7 @@ def main() -> int:
         (out / "errors.md").write_text(errors_markdown(records), encoding="utf-8")
         (out / "tables.md").write_text(summary_markdown(summary), encoding="utf-8")
         print(summary_markdown(summary, headline_only=True))
-        print(f"Results: {out.relative_to(ROOT).as_posix()}/  ->  now run scripts/make_report.py")
+        print(f"Results: {display_path(out)}/  ->  now run scripts/make_report.py")
         return 0
     except RuntimeError as exc:
         print(f"Failed: {exc}")

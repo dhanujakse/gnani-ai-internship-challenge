@@ -24,6 +24,14 @@ def results_dir() -> Path:
     """results/, or KURALCHECK_RESULTS_DIR when set (used by tests)."""
     return Path(os.environ.get("KURALCHECK_RESULTS_DIR") or RESULTS_DIR)
 
+def display_path(path: Path) -> str:
+    """Path relative to the repo when inside it, else absolute (for printing)."""
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 COLUMNS = ["id", "text", "accepted_variants", "category", "dialect", "source", "voice_or_speaker", "split"]
 SOURCES = ("timbre", "real")
 SPLITS = ("dev", "test")
