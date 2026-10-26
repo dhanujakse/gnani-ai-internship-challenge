@@ -26,6 +26,7 @@ from kuralcheck.data import RESULTS_DIR, ROOT, load_sentences, utterances  # noq
 from kuralcheck.errors import errors_markdown  # noqa: E402
 from kuralcheck.fixlayer.bias import BIAS_WORDS_TXT, file_sha, load_bias_words  # noqa: E402
 from kuralcheck.fixlayer.lexicon import VARIANTS_CSV, load_lexicon  # noqa: E402
+from kuralcheck.report.scorecard import make_scorecard  # noqa: E402
 from kuralcheck.report.tables import summary_markdown  # noqa: E402
 
 
@@ -37,6 +38,7 @@ def write_results(out_dir: Path, records: list[dict], summary: dict) -> None:
     (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     (out_dir / "errors.md").write_text(errors_markdown(records), encoding="utf-8")
     (out_dir / "tables.md").write_text(summary_markdown(summary), encoding="utf-8")
+    make_scorecard(out_dir / "summary.json")
 
 
 def main() -> int:
