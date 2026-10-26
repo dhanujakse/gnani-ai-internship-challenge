@@ -5,6 +5,7 @@ A Timbre sentence is spoken by several voices, so it becomes several utterances
 """
 
 import csv
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,11 @@ CONDITIONS_DIR = DATA_DIR / "audio" / "conditions"
 NOISE_DIR = DATA_DIR / "noise"
 LEXICON_DIR = DATA_DIR / "lexicon"
 RESULTS_DIR = ROOT / "results"
+
+
+def results_dir() -> Path:
+    """results/, or KURALCHECK_RESULTS_DIR when set (used by tests)."""
+    return Path(os.environ.get("KURALCHECK_RESULTS_DIR") or RESULTS_DIR)
 
 COLUMNS = ["id", "text", "accepted_variants", "category", "dialect", "source", "voice_or_speaker", "split"]
 SOURCES = ("timbre", "real")

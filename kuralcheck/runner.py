@@ -201,7 +201,7 @@ def record_score(rec: dict[str, Any]) -> UtteranceScore:
     )  # fmt: skip
 
 
-def _group(records: list[dict[str, Any]], keys: tuple[str, ...]) -> list[dict[str, Any]]:
+def group_metrics(records: list[dict[str, Any]], keys: tuple[str, ...]) -> list[dict[str, Any]]:
     groups: dict[tuple, list[dict[str, Any]]] = defaultdict(list)
     for r in records:
         groups[tuple(r[k] for k in keys)].append(r)
@@ -255,7 +255,7 @@ def summarize_run(records: list[dict[str, Any]], meta: dict[str, Any]) -> dict[s
             "latency_ms": latency_stats([r["latency_ms"] for r in calls.values()]),
             "latency_ms_by_condition": {c: latency_stats(v) for c, v in sorted(by_condition.items())},
         },
-        "overall": _group(records, ("model", "source", "condition", "setting")),
-        "by_category": _group(records, ("model", "source", "category", "condition", "setting")),
-        "by_dialect": _group([r for r in records if r["source"] == "real"], ("model", "dialect", "condition", "setting")),
+        "overall": group_metrics(records, ("model", "source", "condition", "setting")),
+        "by_category": group_metrics(records, ("model", "source", "category", "condition", "setting")),
+        "by_dialect": group_metrics([r for r in records if r["source"] == "real"], ("model", "dialect", "condition", "setting")),
     }
