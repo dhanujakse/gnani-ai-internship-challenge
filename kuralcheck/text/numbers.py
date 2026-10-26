@@ -186,7 +186,7 @@ def _continues(prev: NumToken, nxt: NumToken, last_mult: int, current: int) -> b
     if prev.kind == "small":  # "இரண்டு ஆயிரம்", not "பத்து முப்பது"
         return nxt.kind == "mult" and nxt.value > current
     # after ஆயிரம்/லட்சம் or a fused thousand: a smaller part may follow
-    return nxt.kind in ("small", "mult") and nxt.value < last_mult
+    return nxt.value < last_mult  # "லட்சம் ஐம்பதாயிரம்", "ஆயிரம் ஐநூறு"
 
 
 def extract_numbers(text: str) -> list[int]:

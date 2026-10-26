@@ -12,6 +12,7 @@ dependencies = [
     "jiwer>=3.0",
     "matplotlib>=3.8",
     "streamlit>=1.40",
+    "imageio-ffmpeg>=0.6.0",
 ]
 
 [dependency-groups]

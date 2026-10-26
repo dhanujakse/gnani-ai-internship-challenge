@@ -40,6 +40,9 @@ def test_spaced_compounds() -> None:
     assert extract_numbers("நூற்று இருபது பேர்") == [120]
     assert extract_numbers("ஆயிரத்து ஐநூறு ரூபாய்") == [1500]
     assert extract_numbers("இரண்டு லட்சம் ஐம்பது ஆயிரம்") == [250000]
+    assert extract_numbers("இரண்டு லட்சம் ஐம்பதாயிரம்") == [250000]
+    assert extract_numbers("இரண்டு லட்சத்து ஐம்பதாயிரம் ரூபாய்") == [250000]
+    assert extract_numbers("பன்னிரண்டாயிரம் ரூபாய்") == [12000]
 
 
 def test_separate_numbers_stay_separate() -> None:
