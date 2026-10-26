@@ -1,1 +1,3 @@
 pattern,replacement,category
+# One rule per row: what Prisma writes -> the spelling to use. Whole words, longest first, single pass.,,
+# Build from DEV-split errors only (results/<date>_dev/errors.md). Example: சார்ஜர்,charger,code_mixed,,

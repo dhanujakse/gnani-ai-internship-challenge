@@ -1,0 +1,3 @@
+# Prisma bias_list for setting F2: one word per line, letters only, max 100 words.
+# Add dialect/slang words Prisma misses on the DEV split (see results/<date>_dev/errors.md).
+# Never tune on the test split.
