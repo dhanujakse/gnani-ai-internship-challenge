@@ -29,7 +29,10 @@ def test_secret_scan_flags_keys_and_tracked_env(tmp_path) -> None:
 
 
 def test_secret_scan_ignores_settings_code(tmp_path) -> None:
-    fs = files(tmp_path, {"kuralcheck/config.py": 'gnani_api_key: SecretStr = SecretStr("")\n'})
+    fs = files(tmp_path, {
+        "kuralcheck/config.py": 'gnani_api_key: SecretStr = SecretStr("")\n',
+        "kuralcheck/api.py": 'self.token = os.environ.get("KURALCHECK_API_TOKEN", "")\n',
+    })  # fmt: skip
     assert audit.check_secrets(fs, tmp_path) == []
 
 
@@ -41,8 +44,11 @@ def test_personal_data_patterns(tmp_path, text) -> None:
 
 
 def test_numbers_in_sentences_are_not_personal_data(tmp_path) -> None:
-    fs = files(tmp_path, {"data/x.csv": "இருபத்தைந்து=25|1200|250000|12000"})
-    assert [f for f in audit.check_personal_data(fs, tmp_path) if "data/x.csv" in f] == []
+    fs = files(tmp_path, {
+        "data/x.csv": "இருபத்தைந்து=25|1200|250000|12000",
+        "results/r.jsonl": '{"call_id": "6495389500edf218"}',  # hex ids are not phone numbers
+    })  # fmt: skip
+    assert [f for f in audit.check_personal_data(fs, tmp_path) if "x.csv" in f or "r.jsonl" in f] == []
 
 
 def test_split_leakage(tmp_path, monkeypatch) -> None:

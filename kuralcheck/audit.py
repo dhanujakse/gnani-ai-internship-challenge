@@ -16,7 +16,7 @@ from kuralcheck.validate import validate
 SECRET_FILES = (".env", ".streamlit/secrets.toml")
 # KEY/TOKEN/SECRET/PASSWORD = "<long value>" in any tracked text file
 SECRET_ASSIGN = re.compile(r"(?i)\b[\w-]*(api[_-]?key|token|secret|password|access[_-]?code)\b\s*[:=]\s*[\"']?([A-Za-z0-9_\-./+]{12,})")
-PHONE_OR_ID = re.compile(r"(?<![\w.])(?:\+?91[ -]?)?[6-9]\d{4}[ -]?\d{5}(?!\d)|\b\d{4}[ -]\d{4}[ -]\d{4}\b")
+PHONE_OR_ID = re.compile(r"(?<![\w.])(?:\+?91[ -]?)?[6-9]\d{4}[ -]?\d{5}(?!\w)|\b\d{4}[ -]\d{4}[ -]\d{4}\b")
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 TEXT_SUFFIXES = {".py", ".md", ".csv", ".txt", ".toml", ".json", ".jsonl", ".yml", ".yaml", ".example", ""}
 SKIP_DIRS = ("legacy/", "docs/", "assets/licenses/", "uv.lock", "requirements.txt")
@@ -51,6 +51,9 @@ def check_secrets(files: list[Path] | None = None, root: Path = ROOT) -> list[st
         if rel.startswith("tests/"):
             continue  # tests use dummy keys like "test-key"
         for m in SECRET_ASSIGN.finditer(text):
+            value = m.group(2)
+            if "environ" in value or not re.search(r"\d", value) or not re.search(r"[A-Za-z]", value):
+                continue  # code that reads a setting, not a literal key (real keys mix letters and digits)
             findings.append(f"{rel}: possible secret in '{m.group(0)[:40]}…'")
     return findings
 

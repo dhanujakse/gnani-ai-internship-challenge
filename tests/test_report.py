@@ -43,13 +43,17 @@ def whisper_from(summary: dict) -> dict:
 
 def test_scorecard_numbers_match_summary(summary) -> None:
     data = scorecard_data(summary)
-    assert data["headline_source"] == "real"
+    assert data["headline_source"] == "real" and data["settings"] == ["F0", "F1", "F2", "F3"]
     for entry in data["cer_by_condition"]:
-        row = next(r for r in summary["overall"]
-                   if r["source"] == "real" and r["condition"] == entry["condition"] and r["setting"] == "F0")  # fmt: skip
-        assert entry["baseline"] == row["cer"]
+        for setting in data["settings"]:
+            row = next(r for r in summary["overall"] if r["source"] == "real"
+                       and r["condition"] == entry["condition"] and r["setting"] == setting)  # fmt: skip
+            assert entry["cer"][setting] == row["cer"]
     assert data["latency_ms"] == summary["run"]["latency_ms"]
     assert data["n_by_source"] == {"real": 1, "timbre": 2}
+    fx = data["fix_layer"]
+    assert fx["points"] == round(100 * (fx["f2"] - fx["f3"]), 1)
+    assert data["noise_cost"]["setting"] == "F0"
 
 
 def test_scorecard_png_is_1200_square(summary, tmp_path) -> None:
@@ -65,7 +69,8 @@ def test_scorecard_with_whisper(summary, tmp_path) -> None:
     (tmp_path / "w.json").write_text(json.dumps(whisper_from(summary)), encoding="utf-8")
     data = make_scorecard(tmp_path / "s.json", tmp_path, tmp_path / "w.json")
     assert data["whisper_model"] == "whisper-small"
-    assert all("whisper" in e for e in data["cer_by_condition"])
+    assert all("W0" in e["cer"] for e in data["cer_by_condition"])
+    assert data["vs_open_model"]["whisper"] is not None
 
 
 def test_tables_show_n_and_ci(summary) -> None:

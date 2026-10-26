@@ -242,7 +242,7 @@ def summarize_run(records: list[dict[str, Any]], meta: dict[str, Any]) -> dict[s
     return {
         "run": {
             **meta,
-            "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "created_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),  # local time + offset
             "git_commit": git_commit(),
             "n_records": len(records),
             "n_failures": len(records) - len(ok),
