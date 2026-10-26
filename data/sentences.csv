@@ -1,6 +1,6 @@
 id,text,accepted_variants,category,dialect,source,voice_or_speaker,split
 num01,ஒரு கிலோ தக்காளி இருபத்தைந்து ரூபாய்.,இருபத்தைந்து=25,numbers,standard,timbre,Trisha|Asmita|Brinda,dev
-num02,நாளை காலை பத்து மணிக்கு கூட்டம் தொடங்கும்.,பத்து=10,numbers,standard,timbre,Trisha|Asmita|Brinda,test
+num02,நாளை காலை பத்து மணிக்கு கூட்டம் தொடங்கும்.,பத்து=10|பத்து=10:00,numbers,standard,timbre,Trisha|Asmita|Brinda,test
 num03,எனக்கு நாற்பத்தேழு ரூபாய் சில்லறை வேண்டும்.,நாற்பத்தேழு=47,numbers,standard,timbre,Trisha|Asmita|Brinda,test
 num04,பேருந்து மூன்று மணி நாற்பது நிமிடத்துக்கு வரும்.,மூன்று=3|நாற்பது=40,numbers,standard,timbre,Trisha|Asmita|Brinda,dev
 num05,இந்த மாதம் மின்சாரக் கட்டணம் ஆயிரத்து இருநூறு ரூபாய் வந்தது.,இந்த மாதம் மின்சாரக் கட்டணம் 1200 ரூபாய் வந்தது,numbers,standard,timbre,Trisha|Asmita|Brinda,test
@@ -11,7 +11,7 @@ num09,ரயில் இரவு எட்டு மணி பதினைந�
 num10,வகுப்பில் மொத்தம் அறுபத்து நான்கு மாணவர்கள் இருக்கிறார்கள்.,வகுப்பில் மொத்தம் 64 மாணவர்கள் இருக்கிறார்கள்,numbers,standard,timbre,Trisha|Asmita|Brinda,test
 num11,வீட்டு வாடகை மாதம் பன்னிரண்டாயிரம் ரூபாய்.,பன்னிரண்டாயிரம்=12000,numbers,standard,timbre,Trisha|Asmita|Brinda,dev
 num12,கடைக்கு ஐந்து பால் பாக்கெட்டும் மூன்று ரொட்டியும் வேண்டும்.,ஐந்து=5|மூன்று=3,numbers,standard,timbre,Trisha|Asmita|Brinda,test
-num13,மருத்துவர் சந்திப்பு வியாழக்கிழமை மாலை நான்கு மணிக்கு.,நான்கு=4,numbers,standard,timbre,Trisha|Asmita|Brinda,test
+num13,மருத்துவர் சந்திப்பு வியாழக்கிழமை மாலை நான்கு மணிக்கு.,நான்கு=4|நான்கு=4:00,numbers,standard,timbre,Trisha|Asmita|Brinda,test
 num14,இந்த வருடம் எங்கள் பள்ளிக்கு எழுபத்தைந்து வயது ஆகிறது.,எழுபத்தைந்து=75,numbers,standard,timbre,Trisha|Asmita|Brinda,dev
 num15,கடன் தொகை இரண்டு லட்சத்து ஐம்பதாயிரம் ரூபாய்.,கடன் தொகை 250000 ரூபாய்,numbers,standard,timbre,Trisha|Asmita|Brinda,test
 plc01,நாங்கள் அடுத்த வாரம் மதுரைக்கு போகிறோம்.,,names_places,standard,timbre,Trisha|Asmita|Brinda,dev
