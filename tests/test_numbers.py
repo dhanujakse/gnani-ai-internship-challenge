@@ -25,6 +25,9 @@ from kuralcheck.text.numbers import extract_numbers, parse_number_word
         ("ஆயிரம்", 1000),
         ("இரண்டாயிரம்", 2000),
         ("பத்தாயிரம்", 10000),
+        # spellings Prisma actually produced on the dev split
+        ("இருபத்தஞ்சி", 25),
+        ("பன்னிரெண்டாயிரம்", 12000),
     ],
 )
 def test_single_word_values(word: str, value: int) -> None:

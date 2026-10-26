@@ -105,7 +105,7 @@ class PrismaClient:
     def from_settings(cls, settings: Settings | None = None, cache: Cache | None = None) -> "PrismaClient":
         s = settings or get_settings()
         return cls(s.gnani_api_key.get_secret_value(), cache or Cache(s.cache_path), s.gnani_base_url,
-                   throttle=shared_throttle(s.gnani_calls_per_second))
+                   throttle=shared_throttle(s.gnani_calls_per_second, s.gnani_max_calls_per_second))
 
     def cache_key(self, audio: bytes, settings: PrismaSettings) -> str:
         return make_key("prisma", audio, settings.as_dict())

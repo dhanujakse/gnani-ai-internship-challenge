@@ -69,6 +69,11 @@ def post_with_retry(
             continue
         latency_ms = (time.perf_counter() - start) * 1000
         log.info("%s attempt=%d status=%d latency_ms=%.0f", name, attempt + 1, resp.status_code, latency_ms)
+        if throttle is not None:
+            if resp.status_code == 429:
+                throttle.on_rate_limited()
+            elif resp.is_success:
+                throttle.on_success()
         if resp.is_success:
             return resp, latency_ms
         if resp.status_code not in RETRYABLE or last:

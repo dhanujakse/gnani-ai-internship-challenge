@@ -1,0 +1,158 @@
+{
+  "model": "gnani-prisma (stt/v3)",
+  "split": "dev",
+  "date": "2026-10-26",
+  "git_commit": "ce30694",
+  "models": {
+    "stt": "gnani-prisma (stt/v3)",
+    "stt_version": "Prisma v2.5",
+    "tts": "timbre-v2.5"
+  },
+  "headline_source": "timbre",
+  "n_by_source": {
+    "timbre": 60
+  },
+  "settings": {
+    "baseline": "F0",
+    "fixed": "F3"
+  },
+  "cer_by_condition": [
+    {
+      "condition": "C1",
+      "label": "Clean 16 kHz",
+      "baseline": {
+        "value": 0.012850467289719626,
+        "low": 0.0063742558780229145,
+        "high": 0.02022842790182544,
+        "n": 60
+      },
+      "fixed": {
+        "value": 0.02194616977225673,
+        "low": 0.0037017632605867903,
+        "high": 0.04431187356402565,
+        "n": 60
+      }
+    },
+    {
+      "condition": "C2",
+      "label": "Phone band 8 kHz",
+      "baseline": {
+        "value": 0.010899182561307902,
+        "low": 0.0051807817254708455,
+        "high": 0.017795013468527708,
+        "n": 60
+      },
+      "fixed": {
+        "value": 0.018625827814569538,
+        "low": 0.000837477189541523,
+        "high": 0.04150993824478649,
+        "n": 60
+      }
+    },
+    {
+      "condition": "C3",
+      "label": "Phone + light noise (15 dB)",
+      "baseline": {
+        "value": 0.010514018691588784,
+        "low": 0.005153374295208838,
+        "high": 0.017062472817559717,
+        "n": 60
+      },
+      "fixed": {
+        "value": 0.022774327122153208,
+        "low": 0.004822310052767878,
+        "high": 0.045379823470082584,
+        "n": 60
+      }
+    },
+    {
+      "condition": "C4",
+      "label": "Phone + heavy noise (5 dB)",
+      "baseline": {
+        "value": 0.021798365122615803,
+        "low": 0.012641238435314159,
+        "high": 0.032320479667622706,
+        "n": 60
+      },
+      "fixed": {
+        "value": 0.026903973509933773,
+        "low": 0.008515844657919406,
+        "high": 0.0479168877064019,
+        "n": 60
+      }
+    }
+  ],
+  "worst_condition": "C4",
+  "worst_categories": [
+    {
+      "source": "timbre",
+      "category": "names_places",
+      "cer": {
+        "value": 0.03816793893129771,
+        "low": 0.005449591280653951,
+        "high": 0.06453610868933447,
+        "n": 9
+      },
+      "n": 9
+    },
+    {
+      "source": "timbre",
+      "category": "code_mixed",
+      "cer": {
+        "value": 0.02886002886002886,
+        "low": 0.008846659195424511,
+        "high": 0.054726392290164134,
+        "n": 15
+      },
+      "n": 15
+    },
+    {
+      "source": "timbre",
+      "category": "numbers",
+      "cer": {
+        "value": 0.01694915254237288,
+        "low": 0.004397867932892315,
+        "high": 0.0321689584924879,
+        "n": 15
+      },
+      "n": 15
+    },
+    {
+      "source": "timbre",
+      "category": "everyday",
+      "cer": {
+        "value": 0.011612903225806452,
+        "low": 0.0026073079462909975,
+        "high": 0.02368511400223405,
+        "n": 21
+      },
+      "n": 21
+    }
+  ],
+  "fix_gain_points_worst_condition": -0.5,
+  "number_accuracy_worst_condition": {
+    "F0": {
+      "value": 1.0,
+      "low": 1.0,
+      "high": 1.0,
+      "n": 15
+    },
+    "F3": {
+      "value": 1.0,
+      "low": 1.0,
+      "high": 1.0,
+      "n": 15
+    }
+  },
+  "latency_ms": {
+    "p50": 283.6,
+    "p95": 1607.8,
+    "n": 720
+  },
+  "prisma_calls": {
+    "unique": 720,
+    "new": 0,
+    "from_cache": 720
+  },
+  "whisper_model": null
+}

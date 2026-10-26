@@ -103,4 +103,4 @@ def throttle():
         rate = float(get_secret("GNANI_CALLS_PER_SECOND", "1") or 1)
     except ValueError:
         rate = 1.0
-    return shared_throttle(rate)
+    return shared_throttle(rate, max(rate, 3.0))

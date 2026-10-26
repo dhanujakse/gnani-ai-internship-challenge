@@ -82,7 +82,7 @@ class TimbreClient:
     def from_settings(cls, settings: Settings | None = None, cache: Cache | None = None) -> "TimbreClient":
         s = settings or get_settings()
         return cls(s.gnani_api_key.get_secret_value(), cache or Cache(s.cache_path), s.gnani_base_url,
-                   throttle=shared_throttle(s.gnani_calls_per_second))
+                   throttle=shared_throttle(s.gnani_calls_per_second, s.gnani_max_calls_per_second))
 
     def cache_key(self, text: str, settings: TimbreSettings) -> str:
         return make_key("timbre", text.encode("utf-8"), settings.as_dict())
