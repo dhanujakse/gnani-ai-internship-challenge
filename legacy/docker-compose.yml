@@ -1,0 +1,14 @@
+services:
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/bhashabridge.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - bb-data:/data
+    restart: unless-stopped
+
+volumes:
+  bb-data:
