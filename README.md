@@ -26,4 +26,20 @@ ffmpeg must be on your PATH for building audio conditions.
 - **Metrics:** CER (primary), WER, number accuracy, bootstrap 95% CI, always with n
 - Fix layer tuned on the dev split only; headline numbers from the test split only.
 
+## Scoring details
+
+- **Normalisation** (both reference and transcript): Unicode NFC, remove zero-width characters,
+  punctuation and symbols, lowercase Latin letters, collapse spaces. `1,500` stays one number.
+- **CER and WER are dataset-level:** total edits ÷ total reference length, not an average of per-sentence
+  scores. CER counts Unicode code points, including spaces.
+- **Accepted variants** (`accepted_variants` column, separated by `|`) can be either form:
+  - a full alternative sentence, e.g. `அவங்க வந்தாங்க`
+  - a word swap `formal=colloquial`, e.g. `அவர்கள்=அவங்க`
+
+  Every combination is tried and the closest one is scored, so a variant can only help.
+- **Number accuracy:** share of numbers in the reference that appear in the transcript, whether written
+  as digits (`10`) or words (`பத்து`, `இருபத்தைந்து`, `ரெண்டாயிரத்து ஐநூறு`). Fractions (அரை, கால்),
+  ordinals and words with case endings (பத்துக்கு) are not counted yet.
+- **95% intervals:** percentile bootstrap over sentences, 1000 resamples, seed 42.
+
 Older BhashaBridge code is kept in `legacy/` for reference and is not part of this project.
