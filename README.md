@@ -15,7 +15,11 @@ downloadable test set. Test audio for scripted sentences is generated with Gnani
 cp .env.example .env     # add GNANI_API_KEY
 uv sync
 uv run pytest -q
+uv run python scripts/smoke_api.py   # 1 Timbre + 1 Prisma call to check the key; rerun = 0 calls
 ```
+
+Every Prisma and Timbre result is cached in `cache/kuralcheck.sqlite` (keyed by a hash of the audio
+or text plus the settings), so repeat runs never spend credits twice.
 
 ffmpeg must be on your PATH for building audio conditions.
 
