@@ -74,3 +74,12 @@ Small team-made test set: read intervals, not just point values.
 | Names and places | 21 | 1.7 (0.8–2.8) | 1.7 (0.8–2.8) | 1.7 (0.8–2.8) | 1.7 (0.8–2.8) |
 | Code-mixed English | 30 | 5.1 (3.0–7.5) | 5.1 (3.0–7.5) | 5.1 (3.0–7.5) | 5.1 (3.0–7.5) |
 | Everyday | 39 | 3.8 (1.3–6.6) | 3.8 (1.3–6.6) | 3.5 (1.1–6.3) | 3.5 (1.1–6.3) |
+
+## Open-model comparison · timbre · CER %
+
+| Condition | n | Prisma F0 | Prisma F3 | whisper-small |
+|---|---|---|---|---|
+| C1 Clean 16 kHz | 120 | 0.9 (0.5–1.5) | 2.2 (1.1–3.4) | 10.6 (9.0–12.3) |
+| C2 Phone band 8 kHz | 120 | 1.1 (0.6–1.7) | 2.3 (1.3–3.5) | 11.1 (9.5–12.6) |
+| C3 Phone + light noise (15 dB) | 120 | 1.3 (0.7–1.9) | 2.5 (1.4–3.7) | 13.8 (12.0–15.6) |
+| C4 Phone + heavy noise (5 dB) | 120 | 3.0 (2.1–4.1) | 4.3 (2.9–5.7) | 27.4 (24.4–30.8) |

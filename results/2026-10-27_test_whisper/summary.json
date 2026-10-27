@@ -1,0 +1,538 @@
+{
+  "run": {
+    "split": "test",
+    "source": "all",
+    "conditions": [
+      "C1",
+      "C2",
+      "C3",
+      "C4"
+    ],
+    "settings": [
+      "W0"
+    ],
+    "models": {
+      "stt": "whisper-small",
+      "runtime": "faster-whisper (CTranslate2, int8, CPU)",
+      "language": "ta"
+    },
+    "created_at": "2026-10-27T01:18:03+00:00",
+    "git_commit": "e86f502",
+    "n_records": 480,
+    "n_failures": 0,
+    "n_utterances": 120,
+    "prisma_calls": {
+      "unique": 480,
+      "new": 480,
+      "from_cache": 0
+    },
+    "latency_ms": {
+      "p50": 6028.1,
+      "p95": 6979.6,
+      "n": 480
+    },
+    "latency_ms_by_condition": {
+      "C1": {
+        "p50": 6023.1,
+        "p95": 7003.2,
+        "n": 120
+      },
+      "C2": {
+        "p50": 5970.9,
+        "p95": 6987.3,
+        "n": 120
+      },
+      "C3": {
+        "p50": 6096.2,
+        "p95": 6954.5,
+        "n": 120
+      },
+      "C4": {
+        "p50": 6025.6,
+        "p95": 6963.9,
+        "n": 120
+      }
+    }
+  },
+  "overall": [
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "condition": "C1",
+      "setting": "W0",
+      "n": 120,
+      "cer": {
+        "value": 0.10590928006658344,
+        "low": 0.0900704808301266,
+        "high": 0.12277240471800202,
+        "n": 120
+      },
+      "wer": {
+        "value": 0.4057239057239057,
+        "low": 0.3590453666543006,
+        "high": 0.45153318903318895,
+        "n": 120
+      },
+      "number_accuracy": {
+        "value": 0.6153846153846154,
+        "low": 0.5,
+        "high": 0.7297791694133157,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "condition": "C2",
+      "setting": "W0",
+      "n": 120,
+      "cer": {
+        "value": 0.11117999586691465,
+        "low": 0.09475724446250763,
+        "high": 0.12623056131275773,
+        "n": 120
+      },
+      "wer": {
+        "value": 0.41471571906354515,
+        "low": 0.3681241329980926,
+        "high": 0.4603743251094704,
+        "n": 120
+      },
+      "number_accuracy": {
+        "value": 0.6153846153846154,
+        "low": 0.4864671814671815,
+        "high": 0.7435897435897436,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "condition": "C3",
+      "setting": "W0",
+      "n": 120,
+      "cer": {
+        "value": 0.13849329205366356,
+        "low": 0.11991971303422302,
+        "high": 0.15603820208682684,
+        "n": 120
+      },
+      "wer": {
+        "value": 0.4583333333333333,
+        "low": 0.411467819107887,
+        "high": 0.5051561164499064,
+        "n": 120
+      },
+      "number_accuracy": {
+        "value": 0.6666666666666666,
+        "low": 0.5277412280701754,
+        "high": 0.7948717948717948,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "condition": "C4",
+      "setting": "W0",
+      "n": 120,
+      "cer": {
+        "value": 0.2743801652892562,
+        "low": 0.24364217153580936,
+        "high": 0.3075934953817815,
+        "n": 120
+      },
+      "wer": {
+        "value": 0.6633333333333333,
+        "low": 0.6142561596249584,
+        "high": 0.7094057971014494,
+        "n": 120
+      },
+      "number_accuracy": {
+        "value": 0.5641025641025641,
+        "low": 0.3902439024390244,
+        "high": 0.717948717948718,
+        "n": 30
+      },
+      "failures": 0
+    }
+  ],
+  "by_category": [
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C1",
+      "setting": "W0",
+      "n": 30,
+      "cer": {
+        "value": 0.16165718927701056,
+        "low": 0.13632457836889028,
+        "high": 0.19002376499922083,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.574468085106383,
+        "low": 0.48321576952928824,
+        "high": 0.6691190291906236,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C2",
+      "setting": "W0",
+      "n": 30,
+      "cer": {
+        "value": 0.15597075548334688,
+        "low": 0.12967308762628882,
+        "high": 0.18383584570871364,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.5390070921985816,
+        "low": 0.4552225939269171,
+        "high": 0.6231908874329958,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C3",
+      "setting": "W0",
+      "n": 30,
+      "cer": {
+        "value": 0.20227457351746547,
+        "low": 0.1747638765916602,
+        "high": 0.2330876129966024,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.5957446808510638,
+        "low": 0.5167267074615082,
+        "high": 0.681833538083538,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "code_mixed",
+      "condition": "C4",
+      "setting": "W0",
+      "n": 30,
+      "cer": {
+        "value": 0.3422546634225466,
+        "low": 0.2846742723526845,
+        "high": 0.411663807890223,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.7730496453900709,
+        "low": 0.6922945205479452,
+        "high": 0.8677361853832442,
+        "n": 30
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C1",
+      "setting": "W0",
+      "n": 39,
+      "cer": {
+        "value": 0.060674157303370786,
+        "low": 0.03962194036975958,
+        "high": 0.08789167738502325,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.25862068965517243,
+        "low": 0.17520589759834135,
+        "high": 0.35633192175841905,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C2",
+      "setting": "W0",
+      "n": 39,
+      "cer": {
+        "value": 0.06741573033707865,
+        "low": 0.044117097511650404,
+        "high": 0.09597777293041863,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.27586206896551724,
+        "low": 0.18601491405460063,
+        "high": 0.3699793559042113,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C3",
+      "setting": "W0",
+      "n": 39,
+      "cer": {
+        "value": 0.0912490650710546,
+        "low": 0.06560817838849875,
+        "high": 0.1236939105162575,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.3409090909090909,
+        "low": 0.25551587301587303,
+        "high": 0.43750924556213017,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "everyday",
+      "condition": "C4",
+      "setting": "W0",
+      "n": 39,
+      "cer": {
+        "value": 0.25411061285500747,
+        "low": 0.2040544982037759,
+        "high": 0.31391940456141354,
+        "n": 39
+      },
+      "wer": {
+        "value": 0.6228571428571429,
+        "low": 0.5358557810666132,
+        "high": 0.7134839052535682,
+        "n": 39
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C1",
+      "setting": "W0",
+      "n": 21,
+      "cer": {
+        "value": 0.1,
+        "low": 0.07822589591776044,
+        "high": 0.12188672438672438,
+        "n": 21
+      },
+      "wer": {
+        "value": 0.46296296296296297,
+        "low": 0.37189534118335404,
+        "high": 0.5436893203883495,
+        "n": 21
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C2",
+      "setting": "W0",
+      "n": 21,
+      "cer": {
+        "value": 0.1111111111111111,
+        "low": 0.09207520752075207,
+        "high": 0.12906515882019284,
+        "n": 21
+      },
+      "wer": {
+        "value": 0.5185185185185185,
+        "low": 0.4249519230769231,
+        "high": 0.6074766355140186,
+        "n": 21
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C3",
+      "setting": "W0",
+      "n": 21,
+      "cer": {
+        "value": 0.12222222222222222,
+        "low": 0.09968980480640119,
+        "high": 0.14379213754467304,
+        "n": 21
+      },
+      "wer": {
+        "value": 0.5370370370370371,
+        "low": 0.43242670636738434,
+        "high": 0.6428748231966054,
+        "n": 21
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "names_places",
+      "condition": "C4",
+      "setting": "W0",
+      "n": 21,
+      "cer": {
+        "value": 0.20647773279352227,
+        "low": 0.15391879574591993,
+        "high": 0.26514047271849855,
+        "n": 21
+      },
+      "wer": {
+        "value": 0.6545454545454545,
+        "low": 0.545414673046252,
+        "high": 0.7670463032113517,
+        "n": 21
+      },
+      "number_accuracy": null,
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C1",
+      "setting": "W0",
+      "n": 30,
+      "cer": {
+        "value": 0.104,
+        "low": 0.07188792248416877,
+        "high": 0.14916877552809898,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.38011695906432746,
+        "low": 0.31137724550898205,
+        "high": 0.4529530507855316,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.6153846153846154,
+        "low": 0.5,
+        "high": 0.7297791694133157,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C2",
+      "setting": "W0",
+      "n": 30,
+      "cer": {
+        "value": 0.11379579111457522,
+        "low": 0.07748972421387085,
+        "high": 0.15752478510683696,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.38857142857142857,
+        "low": 0.3145450412418004,
+        "high": 0.4728317820879979,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.6153846153846154,
+        "low": 0.4864671814671815,
+        "high": 0.7435897435897436,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C3",
+      "setting": "W0",
+      "n": 30,
+      "cer": {
+        "value": 0.13908313908313907,
+        "low": 0.09324528570218227,
+        "high": 0.1949891493028278,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.41714285714285715,
+        "low": 0.3293067091623205,
+        "high": 0.5087745250700717,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.6666666666666666,
+        "low": 0.5277412280701754,
+        "high": 0.7948717948717948,
+        "n": 30
+      },
+      "failures": 0
+    },
+    {
+      "model": "whisper-small",
+      "source": "timbre",
+      "category": "numbers",
+      "condition": "C4",
+      "setting": "W0",
+      "n": 30,
+      "cer": {
+        "value": 0.282591725214676,
+        "low": 0.22677544165779628,
+        "high": 0.34916179633183175,
+        "n": 30
+      },
+      "wer": {
+        "value": 0.6206896551724138,
+        "low": 0.5433281081610659,
+        "high": 0.706310801323839,
+        "n": 30
+      },
+      "number_accuracy": {
+        "value": 0.5641025641025641,
+        "low": 0.3902439024390244,
+        "high": 0.717948717948718,
+        "n": 30
+      },
+      "failures": 0
+    }
+  ],
+  "by_dialect": []
+}

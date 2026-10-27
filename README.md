@@ -27,6 +27,15 @@ Generated from [`results/2026-10-27_test/summary.json`](results/2026-10-27_test/
 | C3 Phone + light noise (15 dB) | 120 | 1.3 (0.7–1.9) | 3.6 (2.1–5.1) | 3.6 (2.1–5.1) | 2.5 (1.4–3.7) |
 | C4 Phone + heavy noise (5 dB) | 120 | 3.0 (2.1–4.1) | 5.5 (3.8–7.1) | 5.4 (3.8–7.0) | 4.3 (2.9–5.7) |
 
+**Open-model comparison · Synthetic (Timbre, standard Tamil) · CER %**
+
+| Condition | n | Prisma F0 | Prisma F3 | whisper-small |
+|---|---|---|---|---|
+| C1 Clean 16 kHz | 120 | 0.9 (0.5–1.5) | 2.2 (1.1–3.4) | 10.6 (9.0–12.3) |
+| C2 Phone band 8 kHz | 120 | 1.1 (0.6–1.7) | 2.3 (1.3–3.5) | 11.1 (9.5–12.6) |
+| C3 Phone + light noise (15 dB) | 120 | 1.3 (0.7–1.9) | 2.5 (1.4–3.7) | 13.8 (12.0–15.6) |
+| C4 Phone + heavy noise (5 dB) | 120 | 3.0 (2.1–4.1) | 4.3 (2.9–5.7) | 27.4 (24.4–30.8) |
+
 Full tables: [`results/2026-10-27_test/tables.md`](results/2026-10-27_test/tables.md) · error list: [`errors.md`](results/2026-10-27_test/errors.md)
 <!-- results:end -->
 
