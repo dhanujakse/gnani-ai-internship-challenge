@@ -1,9 +1,27 @@
+# secrets and local config
 .env
-.streamlit/secrets.toml
+*.env.local
+backup/
+local.properties
+*.keystore
+*.jks
+
+# Python (server)
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
-cache/
-dist/
-data/audio/conditions/
+server/data/
+*.sqlite
+*.sqlite3
+
+# Android / Gradle
+.gradle/
+build/
+android/app/release/
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+.kotlin/
