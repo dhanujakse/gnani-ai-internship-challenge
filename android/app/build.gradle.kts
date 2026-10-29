@@ -22,6 +22,8 @@ android {
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$serverUrl\"")
+        // phones (arm64, older 32-bit arm) and x86_64 emulators; drops unused WebRTC binaries
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
     buildTypes {
