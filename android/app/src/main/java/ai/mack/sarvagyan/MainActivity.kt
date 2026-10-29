@@ -5,10 +5,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.activity.SystemBarStyle
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -18,6 +20,8 @@ import androidx.navigation.compose.rememberNavController
 import ai.mack.sarvagyan.data.normaliseCode
 import ai.mack.sarvagyan.ui.AppNav
 import ai.mack.sarvagyan.ui.theme.SarvagyanTheme
+import ai.mack.sarvagyan.ui.theme.ThemeMode
+import android.graphics.Color as AndroidColor
 
 class MainActivity : ComponentActivity() {
     private val pendingJoin = mutableStateOf<String?>(null)
@@ -29,8 +33,20 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
         setContent {
             val settings by container.settings.collectAsStateWithLifecycle()
+            val dark = when (settings.theme) {
+                ThemeMode.Dark -> true
+                ThemeMode.Light -> false
+                ThemeMode.System -> isSystemInDarkTheme()
+            }
+            LaunchedEffect(dark) {
+                // light status/navigation bar icons on the dark theme, dark icons on the light theme
+                val style = if (dark) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+                else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
             SarvagyanTheme(mode = settings.theme) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                // Surface provides the theme's content colour, so every Text defaults to readable colours
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     AppNav(rememberNavController(), pendingJoin.value, onJoinCodeConsumed = { pendingJoin.value = null })
                 }
             }
