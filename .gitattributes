@@ -5,3 +5,6 @@
 *.zip binary
 *.pdf binary
 *.sqlite binary
+*.bat text eol=crlf
+*.jar binary
+*.apk binary
