@@ -60,7 +60,8 @@ cd android
 ./gradlew :app:testDebugUnitTest          # 12 JVM unit tests
 ./gradlew :app:assembleDebug              # app/build/outputs/apk/debug/app-debug.apk
 # emulator talking to a server on this PC (default):   http://10.0.2.2:8787
-# phones on your Wi-Fi: ./gradlew :app:assembleDebug -PserverUrl=http://<your-pc-ip>:8787  (debug builds only)
+# real phones: expose the server over HTTPS (e.g. `cloudflared tunnel --url http://localhost:8787`), then
+#   ./gradlew :app:assembleDebug -PserverUrl=https://<your-tunnel>.trycloudflare.com
 # release (https only): ./gradlew :app:assembleRelease -PserverUrl=https://your-server
 ```
 
