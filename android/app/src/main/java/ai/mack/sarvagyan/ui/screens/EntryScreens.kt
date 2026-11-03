@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import ai.mack.sarvagyan.container
 import ai.mack.sarvagyan.data.ApiException
 import ai.mack.sarvagyan.ui.Routes
+import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.LogoMark
 import ai.mack.sarvagyan.ui.components.PrimaryButton
@@ -88,20 +89,21 @@ fun SplashScreen(onDone: (Any) -> Unit) {
         delay((1300 - (System.currentTimeMillis() - started)).coerceAtLeast(0))
         onDone(dest)
     }
-    Column(
-        Modifier.fillMaxSize().background(Brand.Navy950).padding(24.dp),
-        verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        LogoMark(112.dp)
-        Spacer(Modifier.height(24.dp))
-        Text("Sarvagyan", style = MaterialTheme.typography.displaySmall, color = Brand.TextHi)
-        Text("by MACK AI", style = MaterialTheme.typography.labelMedium, color = Brand.Teal)
-        Spacer(Modifier.height(20.dp))
-        AnimatedContent(words[word], transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) }, label = "word") {
-            Text(it, style = MaterialTheme.typography.titleLarge, color = Brand.TextMid)
+    EmeraldAnimatedBackground {
+        Column(
+            Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            LogoMark(112.dp)
+            Spacer(Modifier.height(24.dp))
+            Text("Sarvagyan", style = MaterialTheme.typography.displaySmall, color = Brand.TextHi)
+            Spacer(Modifier.height(20.dp))
+            AnimatedContent(words[word], transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) }, label = "word") {
+                Text(it, style = MaterialTheme.typography.titleLarge, color = Brand.TextMid)
+            }
+            Spacer(Modifier.height(12.dp))
+            Text("Speak Naturally. Understand Everyone.", style = MaterialTheme.typography.bodyLarge, color = Brand.TextMid)
         }
-        Spacer(Modifier.height(12.dp))
-        Text("Speak Naturally. Understand Everyone.", style = MaterialTheme.typography.bodyLarge, color = Brand.TextMid)
     }
 }
 

@@ -94,8 +94,10 @@ import ai.mack.sarvagyan.data.formatDuration
 import ai.mack.sarvagyan.data.normaliseCode
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
+import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
+import ai.mack.sarvagyan.ui.components.GlowingMicButton
 import ai.mack.sarvagyan.ui.components.LanguagePill
 import ai.mack.sarvagyan.ui.components.ListeningBubble
 import ai.mack.sarvagyan.ui.components.PrimaryButton
@@ -103,6 +105,7 @@ import ai.mack.sarvagyan.ui.components.SecondaryButton
 import ai.mack.sarvagyan.ui.components.SectionTitle
 import ai.mack.sarvagyan.ui.components.StatusChip
 import ai.mack.sarvagyan.ui.components.SubtitleBubble
+import ai.mack.sarvagyan.ui.theme.Brand
 import ai.mack.sarvagyan.ui.theme.LocalCallColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -271,7 +274,8 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit) {
     }
     BackHandler { onLeaveScreen() } // the call continues in the background (notification) — End is explicit
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
+    EmeraldAnimatedBackground {
+        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         // header
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(st.peer?.name ?: "?", colors.peer)
@@ -329,20 +333,26 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit) {
 
         // controls
         Row(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).navigationBarsPadding().padding(vertical = 14.dp, horizontal = 8.dp),
+            Modifier.fillMaxWidth().background(Brand.CardBg).navigationBarsPadding().padding(vertical = 10.dp, horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically,
         ) {
-            CallControl(if (st.muted) Icons.Filled.MicOff else Icons.Filled.Mic, if (st.muted) "Unmute" else "Mute", active = st.muted) { call.setMuted(!st.muted) }
+            GlowingMicButton(
+                onClick = { call.setMuted(!st.muted) },
+                isMuted = st.muted,
+                isListening = !st.muted && st.micStreaming,
+                size = 52.dp,
+            )
             CallControl(Icons.AutoMirrored.Filled.VolumeUp, st.route?.label ?: "Audio") { showAudio = true }
             CallControl(if (st.translatedAudio) Icons.Filled.Translate else Icons.Filled.SubtitlesOff,
                 if (st.translatedAudio) "Voice on" else "Subtitles only", active = !st.translatedAudio) { call.setTranslatedAudio(!st.translatedAudio) }
             CallControl(if (compact) Icons.Filled.UnfoldMore else Icons.Filled.UnfoldLess, if (compact) "Transcript" else "Focus") { compact = !compact }
-            FilledIconButton(onClick = { confirmEnd = true }, modifier = Modifier.size(64.dp),
+            FilledIconButton(onClick = { confirmEnd = true }, modifier = Modifier.size(56.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = colors.endCall)) {
-                Icon(Icons.Filled.CallEnd, contentDescription = "End call", tint = Color.White, modifier = Modifier.size(30.dp))
+                Icon(Icons.Filled.CallEnd, contentDescription = "End call", tint = Color.White, modifier = Modifier.size(28.dp))
             }
         }
     }
+}
 
     if (showAudio) AudioSheet(
         routes = st.routes, route = st.route, volume = st.originalVolume, scale = st.subtitleScale,

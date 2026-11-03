@@ -58,6 +58,7 @@ import ai.mack.sarvagyan.data.formatDuration
 import ai.mack.sarvagyan.data.normaliseCode
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
+import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.LanguagePill
@@ -105,7 +106,8 @@ fun HomeScreen(
     }
     LaunchedEffect(Unit) { load() }
 
-    Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
+    EmeraldAnimatedBackground {
+        Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
         // header: profile + connection + settings/help
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(user?.displayName ?: "?", LocalCallColors.current.me)
@@ -139,22 +141,22 @@ fun HomeScreen(
         }
 
         // the most prominent action
-        Surface(
-            onClick = onStartCall, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().height(112.dp),
-            color = MaterialTheme.colorScheme.primary,
-        ) {
-            Row(
-                Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Brand.NeonBlue, Brand.TealDim))).padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                onClick = onStartCall, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().height(112.dp),
+                color = Brand.PrimaryAccent,
             ) {
-                Icon(Icons.Filled.Call, contentDescription = null, tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(36.dp))
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Start a call", style = MaterialTheme.typography.headlineSmall, color = androidx.compose.ui.graphics.Color.White)
-                    Text("Get an invitation code to share", color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.85f))
+                Row(
+                    Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Brand.PrimaryAccent, Brand.HighlightAccent))).padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Call, contentDescription = null, tint = Brand.PrimaryBg, modifier = Modifier.size(36.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Start a call", style = MaterialTheme.typography.headlineSmall, color = Brand.PrimaryBg, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("Get an invitation code to share", color = Brand.PrimaryBg.copy(alpha = 0.85f))
+                    }
                 }
             }
-        }
         Spacer(Modifier.height(12.dp))
 
         AppCard {
@@ -209,7 +211,8 @@ fun HomeScreen(
                 h.peer?.let { p -> scope.launch { runCatching { c.api.setFavourite(p.id, on) }; load() } }
             }) }
         }
-        Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(24.dp))
+        }
     }
 }
 

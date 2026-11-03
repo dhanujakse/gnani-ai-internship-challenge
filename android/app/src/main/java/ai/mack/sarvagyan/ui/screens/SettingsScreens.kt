@@ -51,11 +51,13 @@ import ai.mack.sarvagyan.data.int
 import ai.mack.sarvagyan.data.objOrNull
 import ai.mack.sarvagyan.data.str
 import ai.mack.sarvagyan.ui.components.AppCard
+import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.PrimaryButton
 import ai.mack.sarvagyan.ui.components.SecondaryButton
 import ai.mack.sarvagyan.ui.components.SectionTitle
 import ai.mack.sarvagyan.ui.components.StatusChip
+import ai.mack.sarvagyan.ui.theme.Brand
 import ai.mack.sarvagyan.ui.theme.LocalCallColors
 import ai.mack.sarvagyan.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
@@ -63,12 +65,14 @@ import kotlinx.serialization.json.JsonObject
 
 @Composable
 fun ScreenScaffold(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-            Text(title, style = MaterialTheme.typography.titleLarge)
+    EmeraldAnimatedBackground {
+        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Brand.HighlightAccent) }
+                Text(title, style = MaterialTheme.typography.titleLarge, color = Brand.PrimaryText)
+            }
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) { content() }
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) { content() }
     }
 }
 
@@ -197,7 +201,7 @@ fun SettingsScreen(onBack: () -> Unit, onLanguages: () -> Unit, onHelp: () -> Un
 
         SectionTitle("About and help")
         AppCard(Modifier.clickable(role = Role.Button, onClick = onHelp)) {
-            Text("Sarvagyan ${BuildConfig.VERSION_NAME} · by MACK AI")
+            Text("Sarvagyan ${BuildConfig.VERSION_NAME}")
             Text("How it works, privacy and troubleshooting", color = MaterialTheme.colorScheme.primary)
         }
         Spacer(Modifier.height(16.dp))
@@ -252,7 +256,7 @@ fun HelpScreen(onBack: () -> Unit) {
             Text(body, style = MaterialTheme.typography.bodyLarge)
         }
         Spacer(Modifier.height(24.dp))
-        Text("Sarvagyan ${BuildConfig.VERSION_NAME} · by MACK AI · Speech: Gnani Prisma & Timbre · Translation: MyMemory",
+        Text("Sarvagyan ${BuildConfig.VERSION_NAME} · Speech: Gnani Prisma & Timbre · Translation: MyMemory",
             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
     }

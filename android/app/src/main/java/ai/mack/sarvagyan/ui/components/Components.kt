@@ -1,15 +1,22 @@
 package ai.mack.sarvagyan.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,6 +34,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.Button
@@ -38,18 +47,24 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -62,45 +77,222 @@ import ai.mack.sarvagyan.call.Stage
 import ai.mack.sarvagyan.call.Turn
 import ai.mack.sarvagyan.ui.theme.Brand
 import ai.mack.sarvagyan.ui.theme.LocalCallColors
+import kotlin.math.cos
+import kotlin.math.sin
+
+/**
+ * Immersive Dark Emerald background with flowing light waves,
+ * slowly floating green orbs, and subtle ambient particles.
+ */
+@Composable
+fun EmeraldAnimatedBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val t = rememberInfiniteTransition(label = "bgTransition")
+
+    // Slow organic phase for wave oscillation and orb drifting
+    val phase by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.28318f,
+        animationSpec = infiniteRepeatable(tween(8000, easing = LinearEasing), RepeatMode.Restart),
+        label = "bgPhase",
+    )
+
+    // Particle drift
+    val particlePhase by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.28318f,
+        animationSpec = infiniteRepeatable(tween(5000, easing = LinearEasing), RepeatMode.Restart),
+        label = "particlePhase",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Brand.PrimaryBg)
+            .drawBehind {
+                val w = size.width
+                val h = size.height
+
+                // 1. Moving blurred emerald light orb (top-center)
+                val orb1X = w * (0.5f + 0.15f * sin(phase * 0.7f))
+                val orb1Y = h * (0.12f + 0.05f * cos(phase * 0.5f))
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Brand.SecondaryBg.copy(alpha = 0.85f),
+                            Brand.SecondaryHighlight.copy(alpha = 0.35f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(orb1X, orb1Y),
+                        radius = w * 0.9f,
+                    )
+                )
+
+                // 2. Moving blurred mint light orb (bottom-center)
+                val orb2X = w * (0.5f + 0.12f * cos(phase * 0.6f))
+                val orb2Y = h * (0.78f + 0.06f * sin(phase * 0.4f))
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Brand.EmeraldGlowSubtle.copy(alpha = 0.22f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(orb2X, orb2Y),
+                        radius = w * 0.75f,
+                    )
+                )
+
+                // 3. Floating subtle emerald particles
+                val particleSeeds = listOf(
+                    0.15f to 0.25f, 0.82f to 0.18f, 0.35f to 0.45f,
+                    0.68f to 0.38f, 0.22f to 0.65f, 0.88f to 0.60f,
+                    0.45f to 0.78f, 0.75f to 0.82f, 0.12f to 0.90f,
+                    0.55f to 0.15f, 0.28f to 0.32f, 0.92f to 0.72f,
+                )
+                for ((idx, pos) in particleSeeds.withIndex()) {
+                    val px = w * ((pos.first + 0.04f * sin(particlePhase + idx)) % 1f)
+                    val py = h * ((pos.second - 0.06f * ((particlePhase / 6.28318f) + idx * 0.15f)) % 1f)
+                    val pAlpha = ((sin(particlePhase * 1.5f + idx) + 1f) / 2f * 0.35f).coerceIn(0.05f, 0.45f)
+                    drawCircle(
+                        color = Brand.HighlightAccent.copy(alpha = pAlpha),
+                        radius = (1.5f + (idx % 3) * 0.8f).dp.toPx(),
+                        center = Offset(px, py),
+                    )
+                }
+            },
+        content = content,
+    )
+}
 
 @Composable
-fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-                  icon: ImageVector? = null, loading: Boolean = false) {
+fun PrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    loading: Boolean = false,
+) {
     Button(
-        onClick = onClick, enabled = enabled && !loading, modifier = modifier.heightIn(min = 52.dp),
+        onClick = onClick,
+        enabled = enabled && !loading,
+        modifier = modifier.heightIn(min = 52.dp),
         shape = MaterialTheme.shapes.medium,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Brand.PrimaryAccent,
+            contentColor = Brand.PrimaryBg,
+            disabledContainerColor = Brand.CardBg.copy(alpha = 0.6f),
+            disabledContentColor = Brand.SecondaryText.copy(alpha = 0.4f),
+        ),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
     ) {
-        if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        else if (icon != null) Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+        if (loading) {
+            CircularProgressIndicator(
+                Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = Brand.PrimaryBg,
+            )
+        } else if (icon != null) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = Brand.PrimaryBg)
+        }
         if (icon != null || loading) Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.labelLarge)
+        Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: ImageVector? = null) {
-    OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 48.dp), shape = MaterialTheme.shapes.medium) {
+fun SecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 48.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Brand.SecondaryBg.copy(alpha = 0.45f),
+            contentColor = Brand.HighlightAccent,
+        ),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Brand.Borders),
+    ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = Brand.HighlightAccent)
             Spacer(Modifier.width(8.dp))
         }
         Text(text, style = MaterialTheme.typography.labelLarge)
     }
 }
 
+/**
+ * Enhanced glassmorphic AppCard with subtle animated light sweep along the border
+ * and soft emerald shadow elevation.
+ */
 @Composable
-fun AppCard(modifier: Modifier = Modifier, padding: Dp = 16.dp, content: @Composable ColumnScope.() -> Unit) {
+fun AppCard(
+    modifier: Modifier = Modifier,
+    padding: Dp = 16.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val t = rememberInfiniteTransition(label = "cardBorderTransition")
+    val sweepOffset by t.animateFloat(
+        initialValue = -0.5f,
+        targetValue = 1.5f,
+        animationSpec = infiniteRepeatable(tween(4500, easing = LinearEasing), RepeatMode.Restart),
+        label = "cardBorderSweep",
+    )
+
+    val borderBrush = Brush.linearGradient(
+        0.0f to Brand.Borders,
+        (sweepOffset - 0.25f).coerceIn(0f, 1f) to Brand.Borders,
+        sweepOffset.coerceIn(0f, 1f) to Brand.HighlightAccent.copy(alpha = 0.45f),
+        (sweepOffset + 0.25f).coerceIn(0f, 1f) to Brand.Borders,
+        1.0f to Brand.Borders,
+    )
+
     Surface(
-        modifier = modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) { Column(Modifier.padding(padding), content = content) }
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 4.dp,
+                shape = MaterialTheme.shapes.large,
+                ambientColor = Brand.HighlightAccent.copy(alpha = 0.1f),
+                spotColor = Brand.HighlightAccent.copy(alpha = 0.15f),
+            ),
+        shape = MaterialTheme.shapes.large,
+        color = Brand.CardBg,
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderBrush),
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Brand.CardBg, Color(0xFF091A12))
+                    )
+                )
+                .padding(padding)
+        ) {
+            Column(content = content)
+        }
+    }
 }
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
     Row(modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        Box(
+            Modifier
+                .size(4.dp, 16.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Brand.HighlightAccent)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(text, style = MaterialTheme.typography.titleMedium, color = Brand.PrimaryText, modifier = Modifier.weight(1f))
         action?.invoke()
     }
 }
@@ -112,122 +304,457 @@ fun StatusChip(text: String, color: Color, modifier: Modifier = Modifier, pulsin
         t.animateFloat(0.35f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "a").value
     } else 1f
     Row(
-        modifier.clip(CircleShape).background(color.copy(alpha = 0.14f)).padding(horizontal = 10.dp, vertical = 5.dp),
+        modifier
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.14f))
+            .border(1.dp, color.copy(alpha = 0.35f), CircleShape)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(color.copy(alpha = alpha)))
         Spacer(Modifier.width(6.dp))
-        Text(text, style = MaterialTheme.typography.labelMedium, color = color)
+        Text(text, style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-fun ErrorBanner(message: String, modifier: Modifier = Modifier, onRetry: (() -> Unit)? = null, onDismiss: (() -> Unit)? = null, severe: Boolean = false) {
+fun ErrorBanner(
+    message: String,
+    modifier: Modifier = Modifier,
+    onRetry: (() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null,
+    severe: Boolean = false,
+) {
     val c = if (severe) MaterialTheme.colorScheme.error else LocalCallColors.current.warning
     Row(
-        modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(c.copy(alpha = 0.12f))
-            .border(1.dp, c.copy(alpha = 0.4f), MaterialTheme.shapes.medium).padding(12.dp),
+        modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(c.copy(alpha = 0.12f))
+            .border(1.dp, c.copy(alpha = 0.4f), MaterialTheme.shapes.medium)
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = c)
         Spacer(Modifier.width(10.dp))
-        Text(message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        if (onRetry != null) TextButton(onClick = onRetry) { Icon(Icons.Filled.Refresh, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Retry") }
-        if (onDismiss != null) TextButton(onClick = onDismiss) { Text("OK") }
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = Brand.PrimaryText, modifier = Modifier.weight(1f))
+        if (onRetry != null) {
+            TextButton(onClick = onRetry) {
+                Icon(Icons.Filled.Refresh, null, Modifier.size(16.dp), tint = c)
+                Spacer(Modifier.width(4.dp))
+                Text("Retry", color = c)
+            }
+        }
+        if (onDismiss != null) {
+            TextButton(onClick = onDismiss) { Text("OK", color = c) }
+        }
     }
 }
 
 @Composable
 fun LoadingView(label: String, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        CircularProgressIndicator()
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(Modifier.size(48.dp)) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Brand.HighlightAccent.copy(alpha = 0.25f), Color.Transparent)
+                    )
+                )
+            }
+            CircularProgressIndicator(
+                color = Brand.HighlightAccent,
+                trackColor = Brand.Borders,
+            )
+        }
         Spacer(Modifier.height(12.dp))
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, color = Brand.SecondaryText)
     }
 }
 
 @Composable
 fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
-        Spacer(Modifier.height(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Box(
+            Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(Brand.SecondaryBg)
+                .border(1.dp, Brand.Borders, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, color = Brand.PrimaryText)
         Spacer(Modifier.height(4.dp))
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = Brand.SecondaryText, textAlign = TextAlign.Center)
     }
 }
 
 @Composable
 fun Avatar(name: String, color: Color, size: Dp = 44.dp) {
     Box(
-        Modifier.size(size).clip(CircleShape).background(color.copy(alpha = 0.18f)).border(1.5.dp, color.copy(alpha = 0.6f), CircleShape),
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(
+                Brush.radialGradient(
+                    listOf(color.copy(alpha = 0.28f), color.copy(alpha = 0.08f))
+                )
+            )
+            .border(1.5.dp, color.copy(alpha = 0.7f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(name.trim().take(1).uppercase().ifEmpty { "?" }, color = color, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.42f).sp)
+        Text(
+            name.trim().take(1).uppercase().ifEmpty { "?" },
+            color = color,
+            fontWeight = FontWeight.Bold,
+            fontSize = (size.value * 0.42f).sp,
+        )
     }
 }
 
-/** Animated bars: used for "listening" and the logo. Restrained, low cost. */
+/**
+ * Animated audio waveform with multi-layer harmonic oscillation,
+ * vertical emerald-mint gradients, and peak glowing sparkles.
+ */
 @Composable
-fun Waveform(color: Color, modifier: Modifier = Modifier, bars: Int = 5, active: Boolean = true) {
+fun Waveform(
+    color: Color = Brand.HighlightAccent,
+    modifier: Modifier = Modifier,
+    bars: Int = 5,
+    active: Boolean = true,
+) {
     val t = rememberInfiniteTransition(label = "wave")
-    val phase by t.animateFloat(0f, 6.283f, infiniteRepeatable(tween(1100)), label = "phase")
-    Canvas(modifier.semantics { contentDescription = if (active) "Listening" else "" }) {
-        val w = size.width / (bars * 2 - 1)
+    val phase by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.28318f,
+        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Restart),
+        label = "phase",
+    )
+
+    Canvas(modifier.semantics { contentDescription = if (active) "Voice activity" else "" }) {
+        val totalSpacing = (bars - 1)
+        val w = size.width / (bars * 1.8f)
+        val gap = (size.width - bars * w) / totalSpacing.coerceAtLeast(1)
+
+        // Soft ambient glow halo behind active waveform
+        if (active) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Brand.HighlightAccent.copy(alpha = 0.18f),
+                        Color.Transparent,
+                    ),
+                    radius = size.width * 0.6f,
+                )
+            )
+        }
+
         for (i in 0 until bars) {
-            val amp = if (active) 0.35f + 0.65f * ((kotlin.math.sin(phase + i * 1.1f) + 1f) / 2f) else 0.3f
+            val harmonic1 = sin(phase + i * 0.9f)
+            val harmonic2 = sin(phase * 1.6f + i * 1.3f) * 0.35f
+            val baseAmp = ((harmonic1 + harmonic2 + 1.35f) / 2.7f).coerceIn(0.2f, 1.0f)
+            val amp = if (active) 0.30f + 0.70f * baseAmp else 0.24f
+
             val h = size.height * amp
-            drawRoundRect(color, Offset(i * 2 * w, (size.height - h) / 2), Size(w, h), CornerRadius(w / 2, w / 2))
+            val x = i * (w + gap)
+            val y = (size.height - h) / 2f
+
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Brand.HighlightAccent, color),
+                    startY = y,
+                    endY = y + h,
+                ),
+                topLeft = Offset(x, y),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(w / 2, w / 2),
+            )
+
+            // Sparkle dot above peak on alternate bars
+            if (active && i % 2 == 1 && amp > 0.65f) {
+                drawCircle(
+                    color = Brand.HighlightAccent.copy(alpha = 0.75f),
+                    radius = (w * 0.35f),
+                    center = Offset(x + w / 2f, (y - 3.dp.toPx()).coerceAtLeast(1.dp.toPx())),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Signature Brand LogoMark with glowing concentric rings and animated waveform.
+ */
+@Composable
+fun LogoMark(size: Dp = 96.dp, animated: Boolean = true) {
+    val t = rememberInfiniteTransition(label = "logoBreath")
+    val pulse by t.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "logoPulse",
+    )
+    val rotateAngle by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart),
+        label = "logoRotate",
+    )
+
+    Box(
+        modifier = Modifier
+            .size(size)
+            .drawBehind {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Brand.HighlightAccent.copy(alpha = 0.25f * pulse),
+                            Brand.SecondaryHighlight.copy(alpha = 0.10f),
+                            Color.Transparent,
+                        ),
+                        radius = (size.toPx() / 2f) * 1.3f,
+                    )
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        // Rotating sweep gradient outer ring
+        Canvas(Modifier.size(size)) {
+            drawCircle(
+                brush = Brush.sweepGradient(
+                    listOf(
+                        Brand.PrimaryAccent,
+                        Brand.HighlightAccent,
+                        Brand.SecondaryHighlight,
+                        Brand.PrimaryAccent,
+                    )
+                ),
+                style = Stroke(width = 2.dp.toPx()),
+            )
+        }
+        // Inner glass orb
+        Box(
+            Modifier
+                .size(size * 0.80f)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            Brand.SecondaryHighlight.copy(alpha = 0.6f),
+                            Brand.SecondaryBg.copy(alpha = 0.9f),
+                        )
+                    )
+                )
+                .border(1.dp, Brand.HighlightAccent.copy(alpha = 0.4f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Waveform(Brand.HighlightAccent, Modifier.size(size * 0.48f, size * 0.34f), active = animated)
+        }
+    }
+}
+
+/**
+ * Signature Concentric Glowing Microphone Button.
+ * - Breathing aura + expanding/contracting ripples.
+ * - Rotating neon emerald sweep ring.
+ * - Clear active vs muted transitions.
+ */
+@Composable
+fun GlowingMicButton(
+    onClick: () -> Unit,
+    isMuted: Boolean,
+    modifier: Modifier = Modifier,
+    isListening: Boolean = true,
+    size: Dp = 68.dp,
+) {
+    val t = rememberInfiniteTransition(label = "micAnimation")
+
+    // Breathing pulse
+    val breathScale by t.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "breathScale",
+    )
+    val breathAlpha by t.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.65f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "breathAlpha",
+    )
+
+    // Ripple phase for listening rings
+    val ripplePhase by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart),
+        label = "ripplePhase",
+    )
+
+    Box(
+        modifier = modifier
+            .size(size * 1.55f)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = false, radius = size / 2),
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(this.size.width / 2f, this.size.height / 2f)
+            val baseRadius = (size.toPx() / 2f)
+
+            if (!isMuted) {
+                // Expanding concentric ripple 1
+                if (isListening) {
+                    val r1 = baseRadius * (1.0f + ripplePhase * 0.5f)
+                    val a1 = ((1f - ripplePhase) * 0.55f).coerceIn(0f, 1f)
+                    drawCircle(
+                        color = Brand.HighlightAccent.copy(alpha = a1),
+                        radius = r1,
+                        center = center,
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+
+                    // Expanding concentric ripple 2
+                    val phase2 = (ripplePhase + 0.5f) % 1f
+                    val r2 = baseRadius * (1.0f + phase2 * 0.5f)
+                    val a2 = ((1f - phase2) * 0.45f).coerceIn(0f, 1f)
+                    drawCircle(
+                        color = Brand.PrimaryAccent.copy(alpha = a2),
+                        radius = r2,
+                        center = center,
+                        style = Stroke(width = 1.5.dp.toPx()),
+                    )
+                }
+
+                // Breathing aura halo
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Brand.HighlightAccent.copy(alpha = breathAlpha * 0.45f),
+                            Brand.SecondaryHighlight.copy(alpha = 0.15f),
+                            Color.Transparent,
+                        ),
+                        center = center,
+                        radius = baseRadius * breathScale,
+                    ),
+                    center = center,
+                    radius = baseRadius * breathScale,
+                )
+            }
+        }
+
+        // Inner central microphone button
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .then(
+                    if (!isMuted) {
+                        Modifier
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Brand.PrimaryAccent, Brand.HighlightAccent)
+                                )
+                            )
+                            .shadow(8.dp, CircleShape, ambientColor = Brand.HighlightAccent, spotColor = Brand.HighlightAccent)
+                    } else {
+                        Modifier
+                            .background(Brand.CardBg)
+                            .border(1.5.dp, Brand.Borders, CircleShape)
+                    }
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (isMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
+                contentDescription = if (isMuted) "Unmute microphone" else "Mute microphone",
+                tint = if (isMuted) Brand.SecondaryText else Brand.PrimaryBg,
+                modifier = Modifier.size(size * 0.46f),
+            )
         }
     }
 }
 
 @Composable
-fun LogoMark(size: Dp = 96.dp, animated: Boolean = true) {
-    Box(
-        Modifier.size(size).clip(CircleShape)
-            .background(Brush.linearGradient(listOf(Brand.NeonBlue.copy(alpha = 0.25f), Brand.Teal.copy(alpha = 0.25f)))),
-        contentAlignment = Alignment.Center,
+fun LanguagePill(text: String, modifier: Modifier = Modifier, highlighted: Boolean = false) {
+    Row(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(if (highlighted) Brand.SecondaryBg else Brand.CardBg)
+            .border(1.dp, if (highlighted) Brand.HighlightAccent.copy(alpha = 0.7f) else Brand.Borders, CircleShape)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Canvas(Modifier.size(size)) { drawCircle(Brand.Teal.copy(alpha = 0.6f), style = Stroke(width = 2.dp.toPx())) }
-        Waveform(Brand.Teal, Modifier.size(size * 0.5f, size * 0.36f), active = animated)
+        if (highlighted) {
+            Box(
+                Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(Brand.HighlightAccent)
+            )
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Medium,
+            color = if (highlighted) Brand.HighlightAccent else Brand.PrimaryText,
+        )
     }
 }
 
-@Composable
-fun LanguagePill(text: String, modifier: Modifier = Modifier, highlighted: Boolean = false) {
-    Text(
-        text, style = MaterialTheme.typography.labelLarge,
-        color = if (highlighted) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-        modifier = modifier.clip(CircleShape)
-            .background(if (highlighted) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    )
-}
-
-/** A conversation turn. Mine on the right (teal), theirs on the left (blue); clear pipeline state. */
+/** A conversation turn. Mine on the right (neon mint/deep forest), theirs on the left (emerald/card); clear pipeline state. */
 @Composable
 fun SubtitleBubble(turn: Turn, playing: Boolean, textScale: Float, myLabel: String, peerLabel: String, onRetry: (String) -> Unit) {
-    val colors = LocalCallColors.current
-    val accent = if (turn.mine) colors.me else colors.peer
-    val container = if (turn.mine) colors.meContainer else colors.peerContainer
+    val accent = if (turn.mine) Brand.HighlightAccent else Brand.PrimaryAccent
+    val container = if (turn.mine) Brand.SecondaryBg else Brand.CardBg
+    val bubbleShape = RoundedCornerShape(20.dp, 20.dp, if (turn.mine) 6.dp else 20.dp, if (turn.mine) 20.dp else 6.dp)
+
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (turn.mine) Alignment.End else Alignment.Start) {
-        Text(if (turn.mine) myLabel else peerLabel, style = MaterialTheme.typography.labelMedium, color = accent,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+        Text(
+            if (turn.mine) myLabel else peerLabel,
+            style = MaterialTheme.typography.labelMedium,
+            color = accent,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
         Column(
             Modifier.fillMaxWidth(0.88f)
-                .clip(RoundedCornerShape(20.dp, 20.dp, if (turn.mine) 6.dp else 20.dp, if (turn.mine) 20.dp else 6.dp))
+                .clip(bubbleShape)
                 .background(container)
-                .border(1.dp, if (playing) accent else accent.copy(alpha = 0.25f),
-                    RoundedCornerShape(20.dp, 20.dp, if (turn.mine) 6.dp else 20.dp, if (turn.mine) 20.dp else 6.dp))
+                .border(
+                    1.dp,
+                    if (playing) Brand.HighlightAccent else accent.copy(alpha = 0.35f),
+                    bubbleShape,
+                )
+                .then(
+                    if (playing) {
+                        Modifier.shadow(
+                            elevation = 6.dp,
+                            shape = bubbleShape,
+                            ambientColor = Brand.HighlightAccent.copy(alpha = 0.25f),
+                            spotColor = Brand.HighlightAccent.copy(alpha = 0.3f),
+                        )
+                    } else Modifier
+                )
                 .padding(14.dp)
                 .semantics(mergeDescendants = true) {},
         ) {
-            Text(turn.headline, fontSize = (19 * textScale).sp, lineHeight = (27 * textScale).sp, color = MaterialTheme.colorScheme.onSurface)
+            Text(turn.headline, fontSize = (19 * textScale).sp, lineHeight = (27 * textScale).sp, color = Brand.PrimaryText)
             turn.secondary?.let {
                 Spacer(Modifier.height(6.dp))
-                Text(if (turn.mine) "They hear: $it" else it, fontSize = (14 * textScale).sp, lineHeight = (20 * textScale).sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    if (turn.mine) "They hear: $it" else it,
+                    fontSize = (14 * textScale).sp,
+                    lineHeight = (20 * textScale).sp,
+                    color = Brand.SecondaryText,
+                )
             }
             Spacer(Modifier.height(8.dp))
             TurnStatus(turn, playing, accent, onRetry)
@@ -237,21 +764,38 @@ fun SubtitleBubble(turn: Turn, playing: Boolean, textScale: Float, myLabel: Stri
 
 @Composable
 private fun TurnStatus(turn: Turn, playing: Boolean, accent: Color, onRetry: (String) -> Unit) {
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val muted = Brand.SecondaryText
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         when {
             playing || turn.stage == Stage.Speaking -> {
                 Icon(Icons.AutoMirrored.Filled.VolumeUp, null, tint = accent, modifier = Modifier.size(16.dp))
-                Text(if (turn.mine) "Playing translation to them" else "Playing translation", style = MaterialTheme.typography.labelMedium, color = accent)
+                Text(
+                    if (turn.mine) "Playing translation to them" else "Playing translation",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accent,
+                )
+                Waveform(accent, Modifier.size(24.dp, 12.dp), bars = 4, active = true)
             }
             turn.stage == Stage.Recognized || turn.stage == Stage.Translating -> {
-                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp, color = accent)
-                Text("Translating…", style = MaterialTheme.typography.labelMedium, color = muted)
+                CircularProgressIndicator(
+                    Modifier.size(12.dp),
+                    strokeWidth = 1.5.dp,
+                    color = accent,
+                    trackColor = Brand.Borders,
+                )
+                Text("Translating…", style = MaterialTheme.typography.labelMedium, color = accent)
             }
             turn.stage == Stage.Failed -> {
-                Text(turn.error ?: "Translation failed", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.weight(1f, fill = false))
-                TextButton(onClick = { onRetry(turn.id) }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Retry") }
+                Text(
+                    turn.error ?: "Translation failed",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Brand.Danger,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                TextButton(onClick = { onRetry(turn.id) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text("Retry", color = Brand.HighlightAccent, fontWeight = FontWeight.Bold)
+                }
             }
             else -> {
                 Icon(Icons.Filled.Translate, null, tint = muted, modifier = Modifier.size(14.dp))
@@ -265,17 +809,28 @@ private fun TurnStatus(turn: Turn, playing: Boolean, accent: Color, onRetry: (St
 
 @Composable
 fun ListeningBubble(mine: Boolean, label: String) {
-    val colors = LocalCallColors.current
-    val accent = if (mine) colors.me else colors.peer
+    val accent = if (mine) Brand.HighlightAccent else Brand.PrimaryAccent
+    val container = if (mine) Brand.SecondaryBg else Brand.CardBg
+    val t = rememberInfiniteTransition(label = "listeningPulse")
+    val borderAlpha by t.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(tween(750), RepeatMode.Reverse),
+        label = "listeningAlpha",
+    )
+
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
         Row(
-            Modifier.clip(RoundedCornerShape(18.dp)).background(if (mine) colors.meContainer else colors.peerContainer)
+            Modifier
+                .clip(RoundedCornerShape(18.dp))
+                .background(container)
+                .border(1.dp, accent.copy(alpha = borderAlpha), RoundedCornerShape(18.dp))
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Waveform(accent, Modifier.size(28.dp, 18.dp))
+            Waveform(accent, Modifier.size(28.dp, 18.dp), bars = 5, active = true)
             Spacer(Modifier.width(10.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, color = accent)
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = accent)
         }
     }
 }

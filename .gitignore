@@ -18,6 +18,8 @@ server/data/
 # Android / Gradle
 .gradle/
 build/
+*.apk
+*.png
 android/app/release/
 .idea/
 *.iml

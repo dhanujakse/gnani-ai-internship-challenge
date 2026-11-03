@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="navy_950">#FF070B14</color>
-    <color name="launcher_bg">#FF0B1220</color>
+    <!-- Dark Emerald Glow Theme colors -->
+    <color name="obsidian_black">#FF06140E</color>
+    <color name="deep_forest">#FF0A281B</color>
+    <color name="launcher_bg">#FF06140E</color>
 
     <style name="Theme.Sarvagyan" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/navy_950</item>
+        <item name="android:windowBackground">@color/obsidian_black</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
     <style name="Theme.Sarvagyan.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/navy_950</item>
+        <item name="windowSplashScreenBackground">@color/obsidian_black</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.Sarvagyan</item>
     </style>

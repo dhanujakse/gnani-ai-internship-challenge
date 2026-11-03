@@ -1,6 +1,7 @@
 package ai.mack.sarvagyan.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -10,30 +11,62 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// Brand palette: deep navy / charcoal surfaces, neon blue + teal accents.
+/**
+ * Sarvagyan Dark Emerald Glow design system color palette.
+ * Primary background: #06140E (Obsidian Black)
+ * Secondary background: #0A281B (Deep Forest)
+ * Card background: #0D2118
+ * Primary accent: #00A86B (Emerald Green)
+ * Highlight accent: #00D68F (Neon Mint)
+ * Secondary highlight: #064D32 (Dark Emerald)
+ * Primary text: #F2FFF7
+ * Secondary text: #91A99A
+ * Borders: #254637
+ * Soft background: #DFF8EA
+ */
 object Brand {
-    val Navy950 = Color(0xFF070B14)
-    val Navy900 = Color(0xFF0B1220)
-    val Navy800 = Color(0xFF121B2E)
-    val Navy700 = Color(0xFF1A2540)
-    val Charcoal = Color(0xFF1E2430)
-    val Line = Color(0xFF2A3550)
-    val NeonBlue = Color(0xFF3D8BFF)
-    val Teal = Color(0xFF19D3C5)
-    val TealDim = Color(0xFF0F8F86)
-    val TextHi = Color(0xFFEAF0FF)
-    val TextMid = Color(0xFFA9B4CC)
-    val TextLow = Color(0xFF6E7A94)
+    // Dark Emerald Glow palette
+    val PrimaryBg = Color(0xFF06140E)           // Obsidian Black
+    val SecondaryBg = Color(0xFF0A281B)         // Deep Forest
+    val CardBg = Color(0xFF0D2118)              // Card background
+    val PrimaryAccent = Color(0xFF00A86B)       // Emerald Green
+    val HighlightAccent = Color(0xFF00D68F)     // Neon Mint
+    val SecondaryHighlight = Color(0xFF064D32)  // Dark Emerald
+    val PrimaryText = Color(0xFFF2FFF7)         // Primary text
+    val SecondaryText = Color(0xFF91A99A)       // Secondary text
+    val Borders = Color(0xFF254637)             // Borders
+    val SoftBg = Color(0xFFDFF8EA)              // Soft background
+
+    // Semantic mappings for app surfaces and accents
+    val Navy950 = PrimaryBg                     // Obsidian Black
+    val Navy900 = SecondaryBg                   // Deep Forest
+    val Navy800 = CardBg                        // Card background
+    val Navy700 = SecondaryHighlight            // Dark Emerald
+    val Charcoal = CardBg                       // Charcoal surfaces -> Card background
+    val Line = Borders                          // Borders
+    val NeonBlue = HighlightAccent              // Neon Mint
+    val Teal = PrimaryAccent                    // Emerald Green
+    val TealDim = SecondaryHighlight            // Dark Emerald
+    val TextHi = PrimaryText                    // Primary text
+    val TextMid = SecondaryText                 // Secondary text
+    val TextLow = Color(0xFF6B8576)             // Muted text
     val Danger = Color(0xFFFF4D5E)
     val Warning = Color(0xFFFFB547)
-    val Success = Color(0xFF3DDC97)
+    val Success = HighlightAccent               // Neon Mint
+
+    // Glow accents
+    val EmeraldGlowSubtle = Color(0x2600D68F)   // 15% opacity Neon Mint
+    val EmeraldGlowMedium = Color(0x4D00D68F)   // 30% opacity Neon Mint
+    val EmeraldGlowIntense = Color(0x8000D68F)  // 50% opacity Neon Mint
+    val AmbientGlow = Color(0x1A00A86B)         // 10% opacity Emerald
+    val GlassCardBorder = Color(0x4000D68F)     // 25% glowing border
+    val GlassSurface = Color(0xD90D2118)        // 85% opacity CardBg
 }
 
 /** Colours with a meaning beyond Material roles (speaker identity, call states). */
@@ -49,38 +82,67 @@ data class CallColors(
 )
 
 private val DarkCallColors = CallColors(
-    me = Brand.Teal, meContainer = Color(0xFF0E2A2E),
-    peer = Brand.NeonBlue, peerContainer = Color(0xFF12203D),
-    endCall = Brand.Danger, success = Brand.Success, warning = Brand.Warning,
+    me = Brand.HighlightAccent,
+    meContainer = Color(0xFF0C2B1D),
+    peer = Brand.PrimaryAccent,
+    peerContainer = Brand.CardBg,
+    endCall = Brand.Danger,
+    success = Brand.HighlightAccent,
+    warning = Brand.Warning,
 )
+
 private val LightCallColors = CallColors(
-    me = Color(0xFF00897F), meContainer = Color(0xFFDDF5F2),
-    peer = Color(0xFF1F63D6), peerContainer = Color(0xFFE2ECFF),
-    endCall = Color(0xFFD7263D), success = Color(0xFF138A5A), warning = Color(0xFFB86E00),
+    me = Color(0xFF008955),
+    meContainer = Color(0xFFDDF5E8),
+    peer = Color(0xFF00754A),
+    peerContainer = Color(0xFFE5F7EE),
+    endCall = Color(0xFFD7263D),
+    success = Color(0xFF00A86B),
+    warning = Color(0xFFB86E00),
 )
 
 val LocalCallColors = staticCompositionLocalOf { DarkCallColors }
 
 private val DarkScheme = darkColorScheme(
-    primary = Brand.NeonBlue, onPrimary = Color.White,
-    primaryContainer = Color(0xFF173A73), onPrimaryContainer = Brand.TextHi,
-    secondary = Brand.Teal, onSecondary = Brand.Navy950,
-    secondaryContainer = Color(0xFF0E3B3A), onSecondaryContainer = Brand.TextHi,
-    background = Brand.Navy950, onBackground = Brand.TextHi,
-    surface = Brand.Navy900, onSurface = Brand.TextHi,
-    surfaceVariant = Brand.Navy800, onSurfaceVariant = Brand.TextMid,
-    surfaceContainer = Brand.Navy800, surfaceContainerHigh = Brand.Navy700,
-    surfaceContainerLow = Brand.Navy900, surfaceContainerHighest = Brand.Charcoal,
-    outline = Brand.Line, outlineVariant = Color(0xFF222C44),
-    error = Brand.Danger, onError = Color.White,
+    primary = Brand.PrimaryAccent,
+    onPrimary = Brand.PrimaryBg,
+    primaryContainer = Brand.SecondaryHighlight,
+    onPrimaryContainer = Brand.PrimaryText,
+    secondary = Brand.HighlightAccent,
+    onSecondary = Brand.PrimaryBg,
+    secondaryContainer = Brand.SecondaryBg,
+    onSecondaryContainer = Brand.PrimaryText,
+    tertiary = Brand.HighlightAccent,
+    onTertiary = Brand.PrimaryBg,
+    background = Brand.PrimaryBg,
+    onBackground = Brand.PrimaryText,
+    surface = Brand.PrimaryBg,
+    onSurface = Brand.PrimaryText,
+    surfaceVariant = Brand.CardBg,
+    onSurfaceVariant = Brand.SecondaryText,
+    surfaceContainer = Brand.CardBg,
+    surfaceContainerHigh = Color(0xFF10281E),
+    surfaceContainerHighest = Color(0xFF153427),
+    surfaceContainerLow = Brand.SecondaryBg,
+    outline = Brand.Borders,
+    outlineVariant = Color(0xFF183326),
+    error = Brand.Danger,
+    onError = Color.White,
 )
+
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFF1F63D6), onPrimary = Color.White,
-    secondary = Color(0xFF00897F), onSecondary = Color.White,
-    background = Color(0xFFF5F7FC), onBackground = Color(0xFF0B1220),
-    surface = Color.White, onSurface = Color(0xFF0B1220),
-    surfaceVariant = Color(0xFFE8EDF7), onSurfaceVariant = Color(0xFF46526B),
-    outline = Color(0xFFC3CCDD), error = Color(0xFFD7263D),
+    primary = Color(0xFF008955),
+    onPrimary = Color.White,
+    secondary = Brand.PrimaryAccent,
+    onSecondary = Color.White,
+    background = Color(0xFFF3FAF6),
+    onBackground = Color(0xFF06140E),
+    surface = Color.White,
+    onSurface = Color(0xFF06140E),
+    surfaceVariant = Brand.SoftBg,
+    onSurfaceVariant = Color(0xFF234433),
+    outline = Color(0xFFB4D8C4),
+    error = Brand.Danger,
 )
 
 private val AppTypography = Typography(
@@ -96,7 +158,9 @@ private val AppTypography = Typography(
 )
 
 private val AppShapes = Shapes(
-    small = RoundedCornerShape(10.dp), medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(24.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(24.dp),
 )
 
 enum class ThemeMode { System, Dark, Light }

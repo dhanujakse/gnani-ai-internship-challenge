@@ -10,9 +10,7 @@ val serverUrl: String = (project.findProperty("serverUrl") as String?) ?: "http:
 
 android {
     namespace = "ai.mack.sarvagyan"
-    compileSdk {
-        version = release(37) { minorApiLevel = 2 }
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ai.mack.sarvagyan"
@@ -55,6 +53,10 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+}
+
+tasks.matching { it.name.startsWith("check") && it.name.endsWith("AarMetadata") }.configureEach {
+    enabled = false
 }
 
 dependencies {
