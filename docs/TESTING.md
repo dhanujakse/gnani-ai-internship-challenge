@@ -6,7 +6,7 @@ Status as of 30 Oct 2026. "Verified" means it was actually run; nothing below is
 
 | Suite | Command | Result |
 |---|---|---|
-| Server, offline (fake AI providers) | `cd server && uv run pytest -q` | **53 passed** |
+| Server, offline (fake AI providers) | `cd server && uv run pytest -q` | **68 passed** |
 | Server, live (real Gnani + MyMemory) | `cd server && uv run pytest -m live -s` | **passed** (two-way Tamil ↔ English) |
 | Android JVM unit tests | `cd android && ./gradlew :app:testDebugUnitTest` | **12 passed** |
 | Android build | `./gradlew :app:assembleDebug` | **builds** (52 MB debug APK) |
@@ -78,6 +78,14 @@ coherent unified sentence", "Hi, how are you?" → "my child after a long time".
 phrases (Tamil ↔ English), prefer MyMemory's machine translation over memory entries, reject candidates in the wrong
 script or of implausible length. Live before/after on 10 phrases: 3 fixed, 7 unchanged (already correct), none worse.
 Longer sentences still depend on MyMemory; a stronger translation provider would fix the rest.
+
+## Voicemail (4 Nov 2026)
+- Offline: 15 tests in `tests/test_voicemail.py` (Tamil → English and back, playback in the listener's language,
+  who may send, length limits, silence, translation and voice failures, auto-detect, 7-day expiry, daily cap).
+- Live: `test_live_tamil_voicemail_reaches_english_listener` passed: a real Tamil recording became Tamil text,
+  English text and an English voice through Gnani and MyMemory.
+- **Not yet tested on phones.** Recording, upload and playback on the app have only been built, not run on a device.
+- Tanglish (Tamil with English words) has not been measured; it is sent as Tamil (`ta-IN`).
 
 ## Not yet tested / known gaps
 

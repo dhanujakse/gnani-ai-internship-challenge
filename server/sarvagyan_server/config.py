@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     turn_credential: SecretStr = SecretStr("")
     data_dir: str = "server/data"
     daily_utterance_cap: int = 600  # per user, protects shared API credits
+    daily_voicemail_cap: int = 30  # voicemails sent per user per day
     log_level: str = "INFO"
 
     @property

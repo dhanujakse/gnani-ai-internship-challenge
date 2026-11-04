@@ -7,6 +7,9 @@ REST (JSON, Bearer token):
   GET  /v1/languages   GET /v1/ice-servers   GET /v1/diagnostics
   POST /v1/calls  -> {call_id, invite_code, invite_link}       POST /v1/calls/join {code}
   GET  /v1/calls/history   GET/PUT/DELETE /v1/contacts/favourites[/{id}]
+  POST /v1/voicemails?to=<user id or email>&language=&auto_detect=  (body: raw PCM s16le mono 16 kHz, <= 60 s)
+  GET  /v1/voicemails -> {inbox, sent, unread}   GET /v1/voicemails/{id}/audio (translated voice, PCM)
+  POST /v1/voicemails/{id}/heard   DELETE /v1/voicemails/{id}
 WebSocket:  /v1/calls/{call_id}/ws   (Authorization: Bearer <token>)
   client -> server: {"type":"hello", language, auto_detect, voice, speed, translate_audio}
                     {"type":"signal", payload}  {"type":"settings", ...}  {"type":"retry", id}  {"type":"leave"}
@@ -23,12 +26,13 @@ import time
 import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from sarvagyan_server import __version__
@@ -36,9 +40,11 @@ from sarvagyan_server.config import Settings, get_settings
 from sarvagyan_server.db import Database
 from sarvagyan_server.languages import catalog, get_language
 from sarvagyan_server.providers.gnani_stt import GnaniRecognizer
+from sarvagyan_server.providers.base import ProviderError
 from sarvagyan_server.providers.gnani_tts import GnaniSynthesizer
 from sarvagyan_server.providers.mymemory import MyMemoryTranslator
 from sarvagyan_server.realtime import CallRoom, Participant
+from sarvagyan_server import voicemail as vm
 from sarvagyan_server.security import hash_password, issue_token, new_invite_code, normalise_invite_code, verify_password, verify_token
 
 log = logging.getLogger("sarvagyan")
@@ -51,7 +57,7 @@ class Services:
     """Everything stateful, created once per app (tests inject fakes)."""
 
     def __init__(self, settings: Settings, db: Database | None = None, recognizer=None, translator=None,
-                 synthesizer_factory=None) -> None:  # fmt: skip
+                 synthesizer_factory=None, voicemail_pace_s: float = vm.FRAME_S) -> None:  # fmt: skip
         self.settings = settings
         self.db = db or Database(settings.data_path / "sarvagyan.sqlite3")
         key = settings.gnani_api_key.get_secret_value()
@@ -59,6 +65,8 @@ class Services:
         self.translator = translator or MyMemoryTranslator(settings.mymemory_email)
         self.synthesizer_factory = synthesizer_factory or (
             lambda: GnaniSynthesizer(key, settings.gnani_tts_url, settings.tts_model))
+        self.voicemail = vm.VoicemailService(self.db, self.recognizer, self.translator, self.synthesizer_factory,
+                                             pace_s=voicemail_pace_s)  # fmt: skip
         self.rooms: dict[str, CallRoom] = {}
         self.calls: dict[str, dict] = {}  # call_id -> {code, host, participants{uid: language}, created}
         self.by_code: dict[str, str] = {}
@@ -103,6 +111,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         yield
         for cid in list(app.state.services.rooms):
             await app.state.services.end_room(cid)
+        await app.state.services.voicemail.close()
 
     app = FastAPI(title="Sarvagyan API", version=__version__, lifespan=lifespan)
     app.add_middleware(CORSMiddleware, allow_origins=[], allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
@@ -291,6 +300,108 @@ def create_app(services: Services | None = None) -> FastAPI:
     @app.delete("/v1/contacts/favourites/{contact_id}")
     def remove_favourite(contact_id: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
         s.db.set_favourite(user["id"], contact_id, False)
+        return {"ok": True}
+
+    # --- voicemail ------------------------------------------------------------------------
+    def voicemail_item(v: dict, sent: bool) -> dict:
+        other = v["recipient_id"] if sent else v["sender_id"]
+        return {"id": v["id"], "status": v["status"], "created_at": v["created_at"], "heard": v["heard_at"] is not None,
+                "duration_ms": v["duration_ms"], "source_lang": v["source_lang"], "target_lang": v["target_lang"],
+                "original": v["original"], "translation": v["translation"], "error": v["error"],
+                "contact": {"id": other, "name": v["other_name"] or "Deleted account", "language": v["other_language"],
+                            "is_demo": bool(v["other_is_demo"])}}  # fmt: skip
+
+    def purge_old(s: Services) -> None:
+        s.db.purge_voicemails(time.time() - vm.RETENTION_S)
+
+    @app.post("/v1/voicemails", status_code=202)
+    async def send_voicemail(request: Request, to: str = Query(min_length=1, max_length=200),
+                             language: str = Query(default="ta-IN"), auto_detect: bool = False,
+                             user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:  # fmt: skip
+        try:
+            get_language(language)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        to = to.strip()
+        by_email = "@" in to
+        target = s.db.get_user_by_email(to.lower()) if by_email else s.db.get_user(to)
+        # by email: anyone who knows the address; by id: only people you have been on a call with
+        if target is None or (not by_email and not s.db.have_called(user["id"], target["id"])):
+            raise HTTPException(404, "We couldn't find that person. Use their email address, or pick someone you have called.")
+        if target["id"] == user["id"]:
+            raise HTTPException(422, "You can't send a voicemail to yourself.")
+        midnight = datetime.combine(date.today(), datetime.min.time()).timestamp()
+        if s.db.sent_today(user["id"], midnight) >= s.settings.daily_voicemail_cap:
+            raise HTTPException(429, "Daily voicemail limit reached for this account.")
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > vm.MAX_BYTES:
+                raise HTTPException(413, f"Voicemail is too long (max {vm.MAX_SECONDS} seconds).")
+            chunks.append(chunk)
+        pcm = b"".join(chunks)
+        pcm = pcm[: len(pcm) - len(pcm) % 2]
+        if len(pcm) < vm.MIN_BYTES:
+            raise HTTPException(422, "That recording is too short.")
+        purge_old(s)
+        duration_ms = len(pcm) * 1000 // (vm.SAMPLE_RATE * 2)
+        vid = s.db.insert_voicemail(user["id"], target["id"], language, target["language"], duration_ms)
+        s.voicemail.submit(vid, pcm, language, auto_detect, target["language"])
+        log.info("voicemail accepted id=%s duration_ms=%d", vid[:8], duration_ms)
+        return {"id": vid, "status": "processing", "contact": {"id": target["id"], "name": target["display_name"],
+                                                              "language": target["language"]}}  # fmt: skip
+
+    @app.get("/v1/voicemails")
+    def list_voicemails(user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        purge_old(s)
+        inbox = [voicemail_item(v, sent=False) for v in s.db.voicemails(user["id"], sent=False)]
+        sent = [voicemail_item(v, sent=True) for v in s.db.voicemails(user["id"], sent=True)]
+        return {"inbox": inbox, "sent": sent, "unread": sum(1 for v in inbox if not v["heard"])}
+
+    def own_voicemail(vid: str, user: dict, s: Services) -> dict:
+        v = s.db.get_voicemail(vid)
+        if v is None or user["id"] not in (v["sender_id"], v["recipient_id"]):
+            raise HTTPException(404, "That voicemail no longer exists.")
+        return v
+
+    @app.get("/v1/voicemails/{vid}/audio")
+    async def voicemail_audio(vid: str, user: dict = Depends(current_user), s: Services = Depends(svc)):
+        v = own_voicemail(vid, user, s)
+        if v["status"] != "ready" or not v["translation"]:
+            raise HTTPException(409, "This voicemail is not ready yet.")
+        speech = s.voicemail.speech(v["translation"], v["target_lang"])
+        try:
+            first = await anext(speech)
+        except StopAsyncIteration:
+            first = b""
+        except ProviderError as exc:
+            raise HTTPException(502, f"Couldn't create the translated voice: {exc.message}") from None
+        if user["id"] == v["recipient_id"]:
+            s.db.mark_heard(vid)
+
+        async def body():
+            yield first
+            try:
+                async for chunk in speech:
+                    yield chunk
+            except ProviderError as exc:
+                log.warning("voicemail audio cut short id=%s code=%s", vid[:8], exc.code)
+
+        return StreamingResponse(body(), media_type="application/octet-stream",
+                                 headers={"X-Sample-Rate": str(vm.SAMPLE_RATE)})  # fmt: skip
+
+    @app.post("/v1/voicemails/{vid}/heard")
+    def voicemail_heard(vid: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        v = own_voicemail(vid, user, s)
+        if user["id"] == v["recipient_id"]:
+            s.db.mark_heard(vid)
+        return {"ok": True}
+
+    @app.delete("/v1/voicemails/{vid}")
+    def delete_voicemail(vid: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        own_voicemail(vid, user, s)
+        s.db.delete_voicemail(vid)
         return {"ok": True}
 
     # --- live call socket ----------------------------------------------------------------

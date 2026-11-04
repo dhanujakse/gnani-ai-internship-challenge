@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +55,7 @@ import ai.mack.sarvagyan.container
 import ai.mack.sarvagyan.data.ApiException
 import ai.mack.sarvagyan.data.CallRecord
 import ai.mack.sarvagyan.data.Contact
+import ai.mack.sarvagyan.data.Peer
 import ai.mack.sarvagyan.data.formatDuration
 import ai.mack.sarvagyan.data.normaliseCode
 import ai.mack.sarvagyan.ui.components.AppCard
@@ -75,6 +77,7 @@ import java.util.Date
 fun HomeScreen(
     onStartCall: () -> Unit, onJoin: (String) -> Unit, onLanguages: () -> Unit, onSettings: () -> Unit,
     onHelp: () -> Unit, onResumeCall: () -> Unit, onSignedOut: () -> Unit,
+    onVoicemail: () -> Unit, onRecordVoicemail: (String, String) -> Unit,
 ) {
     val c = LocalContext.current.container
     val scope = rememberCoroutineScope()
@@ -87,6 +90,7 @@ fun HomeScreen(
     var online by remember { mutableStateOf<Boolean?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var code by remember { mutableStateOf("") }
+    var unread by remember { mutableStateOf(0) }
 
     suspend fun load() {
         error = null
@@ -100,6 +104,8 @@ fun HomeScreen(
             if (user == null) c.user.value = c.api.me()
             history = c.api.history().calls
             favourites = c.api.favourites().contacts
+            c.syncLanguage()
+            unread = runCatching { c.api.voicemails().unread }.getOrDefault(unread)
         } catch (e: ApiException) {
             if (e.isAuth) { c.signOut(); onSignedOut() } else error = e.message
         }
@@ -190,6 +196,20 @@ fun HomeScreen(
             }
         }
 
+        Spacer(Modifier.height(12.dp))
+        AppCard(Modifier.clickable(role = Role.Button, onClick = onVoicemail)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Voicemail, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Voicemail", style = MaterialTheme.typography.titleMedium)
+                    Text("Leave a message in your language; they hear it in theirs", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (unread > 0) StatusChip("$unread new", LocalCallColors.current.success)
+            }
+        }
+
         error?.let { Spacer(Modifier.height(12.dp)); ErrorBanner(it, onRetry = { scope.launch { load() } }) }
 
         SectionTitle("Favourite contacts")
@@ -199,7 +219,7 @@ fun HomeScreen(
             favourites.forEach { f ->
                 ContactRow(f.name, c.language(f.language)?.name ?: f.language, f.isDemo, starred = true,
                     onStar = { scope.launch { runCatching { c.api.setFavourite(f.id, false) }; load() } },
-                    onCall = onStartCall)
+                    onCall = onStartCall, onVoicemail = { onRecordVoicemail(f.id, f.name) })
             }
         }
 
@@ -209,7 +229,7 @@ fun HomeScreen(
             history!!.isEmpty() -> EmptyState(Icons.Filled.History, "No calls yet", "Your translated calls will appear here.")
             else -> history!!.take(15).forEach { h -> HistoryRow(h, onStar = { on ->
                 h.peer?.let { p -> scope.launch { runCatching { c.api.setFavourite(p.id, on) }; load() } }
-            }) }
+            }, onVoicemail = { p -> onRecordVoicemail(p.id, p.name ?: "") }) }
         }
             Spacer(Modifier.height(24.dp))
         }
@@ -217,7 +237,9 @@ fun HomeScreen(
 }
 
 @Composable
-private fun ContactRow(name: String, language: String, demo: Boolean, starred: Boolean, onStar: () -> Unit, onCall: () -> Unit) {
+private fun ContactRow(
+    name: String, language: String, demo: Boolean, starred: Boolean, onStar: () -> Unit, onCall: () -> Unit, onVoicemail: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Avatar(name, LocalCallColors.current.peer, 40.dp)
         Spacer(Modifier.width(12.dp))
@@ -226,12 +248,13 @@ private fun ContactRow(name: String, language: String, demo: Boolean, starred: B
             Text(language + if (demo) " · demo account" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(onClick = onStar) { Icon(if (starred) Icons.Filled.Star else Icons.Filled.StarBorder, contentDescription = if (starred) "Remove favourite" else "Add favourite") }
+        IconButton(onClick = onVoicemail) { Icon(Icons.Filled.Voicemail, contentDescription = "Leave $name a voicemail") }
         IconButton(onClick = onCall) { Icon(Icons.Filled.Call, contentDescription = "Start a call and invite $name") }
     }
 }
 
 @Composable
-private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit) {
+private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (Peer) -> Unit) {
     val peer = h.peer
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Avatar(peer?.name ?: "–", LocalCallColors.current.peer, 40.dp)
@@ -245,6 +268,9 @@ private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit) {
                 if (peer?.isDemo == true) add("demo")
             }.joinToString(" · ")
             Text(meta, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (peer != null) IconButton(onClick = { onVoicemail(peer) }) {
+            Icon(Icons.Filled.Voicemail, contentDescription = "Leave ${peer.name ?: "them"} a voicemail")
         }
         if (peer != null) IconButton(onClick = { onStar(!peer.favourite) }) {
             Icon(if (peer.favourite) Icons.Filled.Star else Icons.Filled.StarBorder, contentDescription = if (peer.favourite) "Remove favourite" else "Add favourite")

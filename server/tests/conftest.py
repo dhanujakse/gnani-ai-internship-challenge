@@ -35,6 +35,6 @@ def env(tmp_path) -> Iterator[Env]:
                         data_dir=str(tmp_path), demo_mode=True)  # fmt: skip
     rec, tr, synth = FakeRecognizer(), FakeTranslator(), FakeSynth()
     services = Services(settings, db=Database(":memory:"), recognizer=rec, translator=tr,
-                        synthesizer_factory=lambda: synth)  # fmt: skip
+                        synthesizer_factory=lambda: synth, voicemail_pace_s=0)  # fmt: skip
     with TestClient(create_app(services)) as client:
         yield Env(client, services, rec, tr, synth)

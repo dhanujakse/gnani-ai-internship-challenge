@@ -1,4 +1,9 @@
-"""SQLite storage: users, call metadata and favourites. No audio and no transcripts are ever stored here."""
+"""SQLite storage: users, call metadata, favourites and voicemail text.
+
+No audio is ever stored. Live-call transcripts are never stored here. The only conversation text kept is a
+voicemail's recognised text and its translation, so it can wait for the recipient; it is deleted when either
+person deletes it, and automatically after 7 days.
+"""
 
 import sqlite3
 import threading
@@ -24,6 +29,13 @@ CREATE TABLE IF NOT EXISTS call_participants (
 CREATE TABLE IF NOT EXISTS favourites (
     user_id TEXT NOT NULL, contact_id TEXT NOT NULL, created_at REAL NOT NULL, PRIMARY KEY (user_id, contact_id)
 );
+CREATE TABLE IF NOT EXISTS voicemails (
+    id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, recipient_id TEXT NOT NULL, source_lang TEXT NOT NULL,
+    target_lang TEXT NOT NULL, status TEXT NOT NULL, original TEXT, translation TEXT, error TEXT,
+    duration_ms INTEGER NOT NULL, created_at REAL NOT NULL, heard_at REAL
+);
+CREATE INDEX IF NOT EXISTS voicemails_recipient ON voicemails(recipient_id, created_at);
+CREATE INDEX IF NOT EXISTS voicemails_sender ON voicemails(sender_id, created_at);
 """
 
 
@@ -116,3 +128,46 @@ class Database:
             """SELECT u.id, u.display_name, u.language, u.is_demo FROM favourites f
                JOIN users u ON u.id = f.contact_id WHERE f.user_id = ? ORDER BY f.created_at DESC""", (user_id,))  # fmt: skip
         return [dict(r) for r in rows]
+
+    # voicemails (text only; the audio is never stored) -------------------------------------
+    def insert_voicemail(self, sender_id: str, recipient_id: str, source_lang: str, target_lang: str,
+                         duration_ms: int) -> str:  # fmt: skip
+        vid = uuid.uuid4().hex
+        self._exec("""INSERT INTO voicemails (id, sender_id, recipient_id, source_lang, target_lang, status,
+                      duration_ms, created_at) VALUES (?,?,?,?,?,'processing',?,?)""",
+                   (vid, sender_id, recipient_id, source_lang, target_lang, duration_ms, time.time()))  # fmt: skip
+        return vid
+
+    def finish_voicemail(self, vid: str, status: str, original: str | None = None, translation: str | None = None,
+                         source_lang: str | None = None, error: str | None = None) -> None:  # fmt: skip
+        self._exec("""UPDATE voicemails SET status = ?, original = ?, translation = ?, error = ?,
+                      source_lang = COALESCE(?, source_lang) WHERE id = ?""",
+                   (status, original, translation, error, source_lang, vid))  # fmt: skip
+
+    def get_voicemail(self, vid: str) -> dict | None:
+        rows = self._exec("SELECT * FROM voicemails WHERE id = ?", (vid,))
+        return dict(rows[0]) if rows else None
+
+    def mark_heard(self, vid: str) -> None:
+        self._exec("UPDATE voicemails SET heard_at = COALESCE(heard_at, ?) WHERE id = ?", (time.time(), vid))
+
+    def delete_voicemail(self, vid: str) -> None:
+        self._exec("DELETE FROM voicemails WHERE id = ?", (vid,))
+
+    def purge_voicemails(self, older_than: float) -> None:
+        self._exec("DELETE FROM voicemails WHERE created_at < ?", (older_than,))
+
+    def voicemails(self, user_id: str, sent: bool, limit: int = 50) -> list[dict]:
+        mine, other = ("sender_id", "recipient_id") if sent else ("recipient_id", "sender_id")
+        ready = "" if sent else "AND v.status = 'ready'"
+        rows = self._exec(
+            f"""SELECT v.*, u.display_name AS other_name, u.language AS other_language, u.is_demo AS other_is_demo
+                FROM voicemails v LEFT JOIN users u ON u.id = v.{other}
+                WHERE v.{mine} = ? {ready} ORDER BY v.created_at DESC LIMIT ?""",
+            (user_id, limit),
+        )
+        return [dict(r) for r in rows]
+
+    def sent_today(self, user_id: str, since: float) -> int:
+        rows = self._exec("SELECT COUNT(*) AS n FROM voicemails WHERE sender_id = ? AND created_at >= ?", (user_id, since))
+        return int(rows[0]["n"])

@@ -102,3 +102,41 @@ def test_live_two_way_tamil_english_call(live_client) -> None:
             assert done2["stage"] == "done" and done2["target_lang"] == "ta-IN" and audio2 > 16000
         wa.send_json({"type": "leave"})
         wb.send_json({"type": "leave"})
+
+
+def test_live_tamil_voicemail_reaches_english_listener(live_client) -> None:
+    """A real Tamil recording sent as voicemail: English text for the recipient, then English voice on play."""
+    from sarvagyan_server.providers.mymemory import in_script
+
+    c = live_client
+    a = c.post("/v1/auth/demo", json={"display_name": "Live VM A"}).json()
+    b = c.post("/v1/auth/demo", json={"display_name": "Live VM B"}).json()
+    ha, hb = ({"Authorization": f"Bearer {s['token']}"} for s in (a, b))
+    c.patch("/v1/me", json={"language": "en-IN"}, headers=hb)
+    call = c.post("/v1/calls", json={"language": "ta-IN"}, headers=ha).json()
+    c.post("/v1/calls/join", json={"code": call["invite_code"], "language": "en-IN"}, headers=hb)
+
+    x, sr = sf.read(FIXTURES / "ta_meeting_trisha.wav", dtype="float32")
+    assert sr == 16000
+    pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
+    t0 = time.monotonic()
+    r = c.post("/v1/voicemails", params={"to": b["user"]["id"], "language": "ta-IN"}, content=pcm, headers=ha)
+    assert r.status_code == 202, r.text
+    vid = r.json()["id"]
+    item = None
+    while time.monotonic() - t0 < 90:
+        item = next(v for v in c.get("/v1/voicemails", headers=ha).json()["sent"] if v["id"] == vid)
+        if item["status"] != "processing":
+            break
+        time.sleep(0.5)
+    processed_s = round(time.monotonic() - t0, 1)
+    assert item and item["status"] == "ready", item and item["error"]
+    assert in_script(item["original"], "ta") and in_script(item["translation"], "en")
+    inbox = c.get("/v1/voicemails", headers=hb).json()["inbox"]
+    assert inbox and inbox[0]["id"] == vid
+    t1 = time.monotonic()
+    audio = c.get(f"/v1/voicemails/{vid}/audio", headers=hb)
+    assert audio.status_code == 200 and len(audio.content) > 16000
+    print(f"\nvoicemail: recording {len(pcm) / 32000:.1f}s, ready after {processed_s}s, "
+          f"original {len(item['original'])} chars, translation {len(item['translation'])} chars, "
+          f"voice {len(audio.content) / 32000:.1f}s in {time.monotonic() - t1:.1f}s")

@@ -86,3 +86,33 @@ fun normaliseCode(code: String): String = code.uppercase().filter { it.isLetterO
 
 fun formatDuration(seconds: Long): String = if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds % 3600 / 60, seconds % 60)
 else "%d:%02d".format(seconds / 60, seconds % 60)
+
+/** The other person on a voicemail: the sender (inbox) or the recipient (sent). */
+@Serializable
+data class VoicemailContact(
+    val id: String,
+    val name: String,
+    val language: String? = null,
+    @SerialName("is_demo") val isDemo: Boolean = false,
+)
+
+@Serializable
+data class Voicemail(
+    val id: String,
+    val status: String, // processing | ready | failed
+    @SerialName("created_at") val createdAt: Double,
+    val heard: Boolean = false,
+    @SerialName("duration_ms") val durationMs: Long = 0,
+    @SerialName("source_lang") val sourceLang: String,
+    @SerialName("target_lang") val targetLang: String,
+    val original: String? = null,
+    val translation: String? = null,
+    val error: String? = null,
+    val contact: VoicemailContact,
+)
+
+@Serializable
+data class VoicemailsResponse(val inbox: List<Voicemail>, val sent: List<Voicemail>, val unread: Int = 0)
+
+@Serializable
+data class SentVoicemail(val id: String, val status: String, val contact: VoicemailContact)

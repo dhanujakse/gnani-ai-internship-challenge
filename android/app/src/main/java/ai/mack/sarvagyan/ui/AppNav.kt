@@ -14,8 +14,10 @@ import ai.mack.sarvagyan.ui.screens.HelpScreen
 import ai.mack.sarvagyan.ui.screens.HomeScreen
 import ai.mack.sarvagyan.ui.screens.LanguageScreen
 import ai.mack.sarvagyan.ui.screens.OnboardingScreen
+import ai.mack.sarvagyan.ui.screens.RecordVoicemailScreen
 import ai.mack.sarvagyan.ui.screens.SettingsScreen
 import ai.mack.sarvagyan.ui.screens.SplashScreen
+import ai.mack.sarvagyan.ui.screens.VoicemailScreen
 import kotlinx.serialization.Serializable
 
 object Routes {
@@ -29,6 +31,8 @@ object Routes {
     @Serializable data class Summary(val callId: String)
     @Serializable data object Settings
     @Serializable data object Help
+    @Serializable data class Voicemail(val tab: Int = 0)
+    @Serializable data class RecordVoicemail(val toId: String? = null, val toName: String? = null)
 }
 
 @Composable
@@ -59,6 +63,8 @@ fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed:
                 onSettings = { nav.navigate(Routes.Settings) },
                 onHelp = { nav.navigate(Routes.Help) },
                 onResumeCall = { nav.navigate(Routes.ActiveCall) },
+                onVoicemail = { nav.navigate(Routes.Voicemail()) },
+                onRecordVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
                 onSignedOut = { nav.navigate(Routes.Auth) { popUpTo(Routes.Home) { inclusive = true } } },
             )
         }
@@ -94,5 +100,21 @@ fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed:
             )
         }
         composable<Routes.Help> { HelpScreen(onBack = { nav.popBackStack() }) }
+        composable<Routes.Voicemail> { entry ->
+            VoicemailScreen(
+                initialTab = entry.toRoute<Routes.Voicemail>().tab,
+                onBack = { nav.popBackStack() },
+                onRecord = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
+            )
+        }
+        composable<Routes.RecordVoicemail> { entry ->
+            val args = entry.toRoute<Routes.RecordVoicemail>()
+            RecordVoicemailScreen(
+                toId = args.toId, toName = args.toName,
+                onBack = { nav.popBackStack() },
+                onLanguages = { nav.navigate(Routes.Languages) },
+                onSent = { nav.navigate(Routes.Voicemail(tab = 1)) { popUpTo(Routes.Home) } },
+            )
+        }
     }
 }

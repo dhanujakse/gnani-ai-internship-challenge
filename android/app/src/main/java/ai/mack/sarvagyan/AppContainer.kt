@@ -58,6 +58,13 @@ class AppContainer(private val context: Context) {
 
     fun language(code: String): Language? = languages.value.firstOrNull { it.code == code }
 
+    /** Keeps the server's copy of my language in step, so voicemails to me are translated into it. */
+    suspend fun syncLanguage() {
+        val mine = settings.value.myLanguage
+        val me = user.value ?: runCatching { api.me() }.getOrNull()?.also { user.value = it } ?: return
+        if (me.language != mine) runCatching { api.updateMe(language = mine) }.onSuccess { user.value = it }
+    }
+
     fun signOut() {
         tokens.set(null)
         user.value = null

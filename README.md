@@ -91,7 +91,10 @@ uv run python tools/test_peer.py --join <CODE> --language en-IN --say tests/fixt
 - Controls: mute, speaker/earpiece/headset/Bluetooth, translated voice on/off (subtitles only), original-voice volume,
   subtitle size, focus vs full transcript, mid-call language change, automatic language detection.
 - Email accounts or clearly labelled demo guests; recent calls and favourites from real call history only.
-- Privacy: no recording; transcripts only on the phone and only if you opt in; copy/delete in the call summary.
+- Voicemail: record up to 60 s in your language (Tamil, Tanglish, …); the other person reads and hears it in theirs,
+  and can reply the same way. Send to someone you have called, or by email address.
+- Privacy: no recording is stored; call transcripts only on the phone and only if you opt in. Voicemail text waits on
+  the server until deleted, at most 7 days; its voice is generated when played.
 - Dark theme by default (deep navy, neon blue and teal), light/system themes, accessible labels.
 
 ## Licence

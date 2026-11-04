@@ -69,10 +69,21 @@ translations slower than 3 s are marked. Per-stage metrics are in each `utteranc
 - Auth: email + scrypt password, or demo guests when `DEMO_MODE=true`; HMAC-signed tokens; token on the phone encrypted
   with an Android Keystore AES-GCM key; tokens sent in headers, never URLs.
 - Calls: only the creator and the person with the 6-character invite code can join (max 2); the socket rejects others (4404).
-- Data: no audio is stored anywhere; the server stores users and call metadata (times, languages, counts) only;
-  transcripts are kept only on the phone when the user opts in, and can be deleted.
+- Data: no audio is stored anywhere; the server stores users and call metadata (times, languages, counts);
+  live-call transcripts are kept only on the phone when the user opts in, and can be deleted. The one exception is
+  voicemail text (below), which must wait on the server for the recipient.
+- Voicemail: by email address (anyone who knows it) or to someone you have called; 30 per sender per day.
 - Network: release builds allow https/wss only; debug builds allow http to the emulator host for development.
 - Logs: ids, durations and status codes only — never transcripts, translations, audio or keys.
+
+## Voicemail
+`voicemail.py`. The sender records up to 60 s (16 kHz PCM, in memory on the phone) and uploads it to
+`POST /v1/voicemails`. The server answers 202 at once and, in the background, streams the audio to Prisma at real-time
+cadence (in the sender's language, or `indic-auto`), then drops the audio. The recognised text is translated with
+MyMemory into the recipient's preferred language (`users.language`, kept in step with the app's "my language").
+Only the text is stored: original + translation, deleted when either person deletes it or after 7 days.
+When the recipient presses play, `GET /v1/voicemails/{id}/audio` creates the voice with Timbre and streams it; it is
+never stored. Processing takes about the recording's length plus a few seconds, because Prisma must be fed in real time.
 
 ## Limits and known gaps
 - WebRTC needs a TURN server for some networks (symmetric NAT, many mobile carriers). Configure `TURN_URLS` etc.
