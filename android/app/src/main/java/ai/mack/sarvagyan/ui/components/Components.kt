@@ -10,6 +10,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import ai.mack.sarvagyan.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -118,7 +121,9 @@ fun EmeraldAnimatedBackground(
                 // 1. Moving blurred emerald light orb (top-center)
                 val orb1X = w * (0.5f + 0.15f * sin(phase * 0.7f))
                 val orb1Y = h * (0.12f + 0.05f * cos(phase * 0.5f))
-                drawCircle(
+                // drawRect, not drawCircle: drawCircle clips the gradient to a hard-edged disc
+                // the width of the screen, which showed as lines across the top and bottom.
+                drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(
                             Brand.SecondaryBg.copy(alpha = 0.85f),
@@ -133,7 +138,7 @@ fun EmeraldAnimatedBackground(
                 // 2. Moving blurred mint light orb (bottom-center)
                 val orb2X = w * (0.5f + 0.12f * cos(phase * 0.6f))
                 val orb2Y = h * (0.78f + 0.06f * sin(phase * 0.4f))
-                drawCircle(
+                drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(
                             Brand.EmeraldGlowSubtle.copy(alpha = 0.22f),
@@ -497,12 +502,7 @@ fun LogoMark(size: Dp = 96.dp, animated: Boolean = true) {
         animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "logoPulse",
     )
-    val rotateAngle by t.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart),
-        label = "logoRotate",
-    )
+    val glow = if (animated) pulse else 1f
 
     Box(
         modifier = Modifier
@@ -511,48 +511,21 @@ fun LogoMark(size: Dp = 96.dp, animated: Boolean = true) {
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Brand.HighlightAccent.copy(alpha = 0.25f * pulse),
-                            Brand.SecondaryHighlight.copy(alpha = 0.10f),
+                            Brand.HighlightAccent.copy(alpha = 0.22f * glow),
                             Color.Transparent,
                         ),
-                        radius = (size.toPx() / 2f) * 1.3f,
-                    )
+                        radius = (this.size.minDimension / 2f) * 1.4f,
+                    ),
+                    radius = (this.size.minDimension / 2f) * 1.4f,
                 )
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Rotating sweep gradient outer ring
-        Canvas(Modifier.size(size)) {
-            drawCircle(
-                brush = Brush.sweepGradient(
-                    listOf(
-                        Brand.PrimaryAccent,
-                        Brand.HighlightAccent,
-                        Brand.SecondaryHighlight,
-                        Brand.PrimaryAccent,
-                    )
-                ),
-                style = Stroke(width = 2.dp.toPx()),
-            )
-        }
-        // Inner glass orb
-        Box(
-            Modifier
-                .size(size * 0.80f)
-                .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        listOf(
-                            Brand.SecondaryHighlight.copy(alpha = 0.6f),
-                            Brand.SecondaryBg.copy(alpha = 0.9f),
-                        )
-                    )
-                )
-                .border(1.dp, Brand.HighlightAccent.copy(alpha = 0.4f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Waveform(Brand.HighlightAccent, Modifier.size(size * 0.48f, size * 0.34f), active = animated)
-        }
+        Image(
+            painter = painterResource(R.drawable.sarvagyan_logo),
+            contentDescription = "Sarvagyan logo",
+            modifier = Modifier.size(size).clip(RoundedCornerShape(size * 0.22f)),
+        )
     }
 }
 

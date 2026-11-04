@@ -6,7 +6,7 @@ Status as of 30 Oct 2026. "Verified" means it was actually run; nothing below is
 
 | Suite | Command | Result |
 |---|---|---|
-| Server, offline (fake AI providers) | `cd server && uv run pytest -q` | **43 passed** |
+| Server, offline (fake AI providers) | `cd server && uv run pytest -q` | **53 passed** |
 | Server, live (real Gnani + MyMemory) | `cd server && uv run pytest -m live -s` | **passed** (two-way Tamil ↔ English) |
 | Android JVM unit tests | `cd android && ./gradlew :app:testDebugUnitTest` | **12 passed** |
 | Android build | `./gradlew :app:assembleDebug` | **builds** (52 MB debug APK) |
@@ -20,7 +20,7 @@ Status as of 30 Oct 2026. "Verified" means it was actually run; nothing below is
 | 3 | Select Tamil and English | Partly | language chips in UI; server validates codes (tests) |
 | 4 | Request microphone permission | Partly | in-app request + rationale implemented; on the emulator it was pre-granted via adb, so the system dialog itself was not exercised |
 | 5 | Create a call | **Verified on emulator** | invite code WQMYST shown with Copy/Share; server tests too |
-| 6 | Join a call from a second device | Verified with the test peer as second participant; **not with two physical phones** | `tools/test_peer.py`, `test_call_flow.py` |
+| 6 | Join a call from a second device | **Verified on two physical phones** (30 Oct 2026, user test) and with the test peer | server on the PC exposed through a Cloudflare quick tunnel; `tools/test_peer.py`, `test_call_flow.py` |
 | 7 | Transcribe Tamil speech | **Verified live** | real Tamil recording → Prisma v3.0 streaming: "நாளை பள்ளிக்கு விடுமுறை." |
 | 8 | Translate Tamil into English | **Verified live** | → "the tution will remain closed tomorrow" (MyMemory) |
 | 9 | Play translated English speech to the recipient | **Verified live (server → listener audio stream)** | 1.8 s of English PCM delivered to the listener only |
@@ -65,11 +65,24 @@ Not covered by the emulator run: the original-voice WebRTC path (the test peer h
 "No direct audio"), hearing the translated audio (emulator started with `-no-audio`), the app user's own speech being
 translated (needs a microphone), tapping Mute/End buttons.
 
+## Two-phone test (30 Oct 2026)
+
+Two Android phones, debug APK built with `-PserverUrl=https://<tunnel>.trycloudflare.com`, server on the development PC.
+Reported by the user: calling, two-way translation, translated voice and subtitles worked. Issue seen: occasional
+wrong translations of short phrases (e.g. "hi" shown as "hello darling").
+
+Diagnosis: the translation API, not the app (the exact call was not logged, by design). MyMemory is a crowd-sourced
+translation memory and for short phrases often returns an unrelated human entry. Probed live: "hello" → "Create a
+coherent unified sentence", "Hi, how are you?" → "my child after a long time". Mitigations added on our side
+(`providers/phrasebook.py`, `choose_translation` in `providers/mymemory.py`): fixed translations for common call
+phrases (Tamil ↔ English), prefer MyMemory's machine translation over memory entries, reject candidates in the wrong
+script or of implausible length. Live before/after on 10 phrases: 3 fixed, 7 unchanged (already correct), none worse.
+Longer sentences still depend on MyMemory; a stronger translation provider would fix the rest.
+
 ## Not yet tested / known gaps
 
-- **Two physical phones on different networks**, including the WebRTC original-voice path end to end on real
-  hardware. The WebRTC code builds and follows the documented API, but peer-to-peer audio between two devices has
-  not been exercised here (only one emulator could run on this machine). On mobile data a TURN server is likely needed.
+- **Phones on different networks / mobile data.** The network setup of the two-phone test was not recorded; on mobile
+  data a TURN server is likely needed for the original-voice WebRTC path.
 - Bluetooth/headset routing and acoustic echo on real speakers (hardware echo cancellation varies by phone).
 - Long calls (> 15 min Prisma session rotation is implemented and unit-covered, not soak-tested).
 - MyMemory translation quality is modest for colloquial Tamil; the `Translator` interface allows swapping providers.

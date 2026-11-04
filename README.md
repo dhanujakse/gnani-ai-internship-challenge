@@ -1,6 +1,6 @@
 # Sarvagyan — Real-Time Translation Calling
 
-**Speak Naturally. Understand Everyone.** · by MACK AI
+**Speak Naturally. Understand Everyone.**
 
 Sarvagyan is an Android calling app for two people who don't share a language. Each person speaks their own
 language; the other hears a natural translated voice and reads live subtitles — both ways, continuously,

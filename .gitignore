@@ -20,6 +20,7 @@ server/data/
 build/
 *.apk
 *.png
+!android/app/src/main/res/**/*.png
 android/app/release/
 .idea/
 *.iml

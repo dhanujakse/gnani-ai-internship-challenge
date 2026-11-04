@@ -5,6 +5,12 @@ GET https://api.mymemory.translated.net/get?q=<text>&langpair=ta|en[&de=<email>]
 - free quota: 5,000 chars/day anonymous, 50,000 with a contact email (`de`)
 Response (observed live): {"responseData": {"translatedText": ...}, "responseStatus": 200, "quotaFinished": false}
 A small in-memory LRU cache avoids paying twice for repeated phrases ("hello", "okay"...).
+
+Accuracy: MyMemory returns a translation-memory match (crowd-sourced human entries) when one exists, and its own
+machine translation ("created-by": "MT!") otherwise or as an extra match. Human entries for short phrases are often
+unrelated to the input (probed live 30 Oct 2026), so `choose_translation` prefers the machine translation, rejects
+candidates in the wrong script or of implausible length, and common call phrases never reach the API at all
+(see phrasebook.py).
 """
 
 import html
@@ -13,12 +19,57 @@ from collections import OrderedDict
 
 import httpx
 
+from sarvagyan_server.providers import phrasebook
 from sarvagyan_server.providers.base import ProviderError
 
 API_URL = "https://api.mymemory.translated.net/get"
 MAX_Q_BYTES = 480  # stay under the 500-byte limit
 CACHE_SIZE = 512
 _SENTENCE = re.compile(r"(?<=[.!?।])\s+")
+
+# Unicode block of each target language's script (Latin for English)
+_SCRIPTS = {
+    "ta": (0x0B80, 0x0BFF), "hi": (0x0900, 0x097F), "mr": (0x0900, 0x097F), "te": (0x0C00, 0x0C7F),
+    "kn": (0x0C80, 0x0CFF), "ml": (0x0D00, 0x0D7F), "bn": (0x0980, 0x09FF), "gu": (0x0A80, 0x0AFF),
+    "pa": (0x0A00, 0x0A7F), "en": (0x0041, 0x024F),
+}
+
+
+def in_script(text: str, lang: str) -> bool:
+    """True when most letters of `text` are in the target language's script (unknown languages: always True)."""
+    block = _SCRIPTS.get(lang)
+    letters = [c for c in text if c.isalpha()]
+    if not block or not letters:
+        return bool(letters) or not block
+    lo, hi = block
+    return sum(lo <= ord(c) <= hi for c in letters) >= 0.6 * len(letters)
+
+
+def plausible_length(source: str, candidate: str) -> bool:
+    """Reject answers far longer or shorter than the input (a typical sign of an unrelated memory entry)."""
+    s, c = len(source.strip()), len(candidate.strip())
+    return c <= 4 * s + 12 and c * 5 + 6 >= s
+
+
+def choose_translation(source: str, target_lang: str, body: dict) -> str:
+    """Pick the most trustworthy candidate from a MyMemory response.
+
+    Order: a valid machine translation, then the main answer, then other matches by match score.
+    Valid = right script and plausible length. Falls back to the main answer if nothing is valid.
+    """
+    main = ((body.get("responseData") or {}).get("translatedText") or "").strip()
+    matches = [m for m in body.get("matches") or [] if isinstance(m, dict) and (m.get("translation") or "").strip()]
+
+    def ok(text: str) -> bool:
+        text = html.unescape(text)
+        return in_script(text, target_lang) and plausible_length(source, text)
+
+    machine = [m["translation"] for m in matches if m.get("created-by") == "MT!"]
+    others = [m["translation"] for m in sorted(matches, key=lambda m: -float(m.get("match") or 0))]
+    for candidate in [*machine, main, *others]:
+        if candidate and ok(candidate):
+            return candidate.strip()
+    return main
 
 
 def split_for_limit(text: str, max_bytes: int = MAX_Q_BYTES) -> list[str]:
@@ -84,12 +135,15 @@ class MyMemoryTranslator:
             raise ProviderError("mymemory", "unsupported_language", "This language pair is not supported.")
         if status != 200 or not translated:
             raise ProviderError("mymemory", "bad_request", f"Translation failed ({status}).")
-        return html.unescape(translated).strip()
+        return html.unescape(choose_translation(text, target.split("-")[0], body)).strip()
 
     async def translate(self, text: str, source: str, target: str) -> str:
         text = text.strip()
         if not text or source.split("-")[0] == target.split("-")[0]:
             return text
+        fixed = phrasebook.lookup(text, source, target)
+        if fixed is not None:
+            return fixed
         key = (text, source, target)
         if key in self._cache:
             self._cache.move_to_end(key)

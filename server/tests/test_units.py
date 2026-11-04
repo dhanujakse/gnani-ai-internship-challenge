@@ -73,7 +73,7 @@ async def test_mymemory_parses_and_caches() -> None:
 async def test_mymemory_error_mapping(response, code) -> None:
     tr = _mm(lambda req: response)
     with pytest.raises(ProviderError) as e:
-        await tr.translate("வணக்கம்", "ta-IN", "en-IN")
+        await tr.translate("நாளை பார்க்கலாம்", "ta-IN", "en-IN")
     assert e.value.code == code
 
 
@@ -82,7 +82,7 @@ async def test_mymemory_timeout() -> None:
         raise httpx.ReadTimeout("slow", request=req)
 
     with pytest.raises(ProviderError) as e:
-        await _mm(handler).translate("வணக்கம்", "ta-IN", "en-IN")
+        await _mm(handler).translate("நாளை பார்க்கலாம்", "ta-IN", "en-IN")
     assert e.value.code == "timeout" and e.value.retryable
 
 
@@ -170,3 +170,45 @@ async def test_tts_ignores_stray_complete_between_requests() -> None:
     second = [c async for c in synth.synthesize("சரி", "ta-IN", "Trisha", 1.0)]
     assert len(first) == 1 and len(second) == 2
     assert json.loads(ws.sent[1])["language"] == "ta-IN"
+
+
+# --- translation accuracy guards (real MyMemory answers probed 30 Oct 2026) ---
+from sarvagyan_server.providers import phrasebook  # noqa: E402
+from sarvagyan_server.providers.mymemory import choose_translation, in_script  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("text", "src", "tgt", "want"),
+    [("Hi.", "en-IN", "ta-IN", "ஹாய்"), ("hello", "en", "ta", "ஹலோ"), ("Hi, how are you?", "en-IN", "ta-IN", "ஹாய், எப்படி இருக்கீங்க?"),
+     ("I’m fine", "en-IN", "ta-IN", "நான் நல்லா இருக்கேன்"), ("ஹாய்.", "ta-IN", "en-IN", "Hi"), ("சரி", "ta-IN", "en-IN", "Okay")],
+)
+def test_phrasebook_hits(text, src, tgt, want) -> None:
+    assert phrasebook.lookup(text, src, tgt) == want
+
+
+def test_phrasebook_misses_longer_sentences_and_other_pairs() -> None:
+    assert phrasebook.lookup("Hi, I will call you later", "en-IN", "ta-IN") is None
+    assert phrasebook.lookup("hello", "en-IN", "hi-IN") is None
+
+
+def test_choose_prefers_machine_translation_over_memory_entry() -> None:
+    body = {"responseData": {"translatedText": "the tution will remain closed tomorrow"},
+            "matches": [{"translation": "the tution will remain closed tomorrow", "match": 1, "created-by": "Public Web"},
+                        {"translation": "Tomorrow is a holiday for school.", "match": 0.85, "created-by": "MT!"}]}  # fmt: skip
+    assert choose_translation("நாளை பள்ளிக்கு விடுமுறை.", "en", body) == "Tomorrow is a holiday for school."
+
+
+def test_choose_rejects_wrong_script_and_implausible_length() -> None:
+    body = {"responseData": {"translatedText": "ஒரு ஒத்திசைவான ஒருங்கிணைந்த வாக்கியத்தை உருவாக்குங்கள்"},
+            "matches": [{"translation": "ஒரு ஒத்திசைவான ஒருங்கிணைந்த வாக்கியத்தை உருவாக்குங்கள்", "match": 1, "created-by": "Public Web"},
+                        {"translation": "vannakam", "match": 0.98, "created-by": "MateCat"},
+                        {"translation": "வணக்கம்", "match": 0.9, "created-by": "MateCat"}]}  # fmt: skip
+    assert choose_translation("helo", "ta", body) == "வணக்கம்"
+    assert in_script("வணக்கம்", "ta") and not in_script("vannakam", "ta") and in_script("Hello", "en")
+
+
+async def test_mymemory_uses_phrasebook_without_calling_api() -> None:
+    def handler(req):
+        raise AssertionError("API should not be called for a phrasebook phrase")
+
+    assert await _mm(handler).translate("Hello!", "en-IN", "ta-IN") == "ஹலோ"
