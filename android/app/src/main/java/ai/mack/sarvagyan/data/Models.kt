@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 data class User(
     val id: String,
     @SerialName("display_name") val displayName: String,
+    val username: String? = null,
     val email: String? = null,
     @SerialName("is_demo") val isDemo: Boolean = false,
     val language: String = "ta-IN",
@@ -116,3 +117,76 @@ data class VoicemailsResponse(val inbox: List<Voicemail>, val sent: List<Voicema
 
 @Serializable
 data class SentVoicemail(val id: String, val status: String, val contact: VoicemailContact)
+
+@Serializable
+data class CheckUsernameResponse(
+    val available: Boolean,
+    val username: String,
+    val reason: String? = null,
+)
+
+@Serializable
+data class UserSearchResult(
+    val id: String,
+    @SerialName("display_name") val displayName: String,
+    val username: String? = null,
+    val language: String = "ta-IN",
+    @SerialName("is_demo") val isDemo: Boolean = false,
+)
+
+@Serializable
+data class SearchUsersResponse(val users: List<UserSearchResult>)
+
+@Serializable
+data class ConversationMember(
+    val id: String,
+    @SerialName("display_name") val displayName: String,
+    val username: String? = null,
+    val language: String = "ta-IN",
+    val role: String = "member",
+    @SerialName("joined_at") val joinedAt: Double = 0.0,
+)
+
+@Serializable
+data class ChatMessage(
+    val id: String,
+    @SerialName("conversation_id") val conversationId: String,
+    @SerialName("sender_id") val senderId: String,
+    @SerialName("sender_name") val senderName: String,
+    @SerialName("source_lang") val sourceLang: String = "en-IN",
+    @SerialName("original_text") val originalText: String,
+    @SerialName("translated_text") val translatedText: String? = null,
+    @SerialName("is_translated") val isTranslated: Boolean = false,
+    @SerialName("audio_id") val audioId: String? = null,
+    @SerialName("audio_url") val audioUrl: String? = null,
+    @SerialName("duration_ms") val durationMs: Long = 0,
+    @SerialName("created_at") val createdAt: Double = 0.0,
+)
+
+@Serializable
+data class Conversation(
+    val id: String,
+    @SerialName("is_group") val isGroup: Boolean = false,
+    val name: String? = null,
+    @SerialName("created_by") val createdBy: String? = null,
+    @SerialName("created_at") val createdAt: Double = 0.0,
+    @SerialName("updated_at") val updatedAt: Double = 0.0,
+    val members: List<ConversationMember> = emptyList(),
+    @SerialName("member_count") val memberCount: Int = 0,
+    val peer: ConversationMember? = null,
+    @SerialName("other_user") val otherUser: User? = null,
+    @SerialName("last_message") val lastMessage: ChatMessage? = null,
+    @SerialName("unread_count") val unreadCount: Int = 0,
+)
+
+@Serializable
+data class ConversationsResponse(val conversations: List<Conversation>)
+
+@Serializable
+data class SingleConversationResponse(val conversation: Conversation)
+
+@Serializable
+data class ChatMessagesResponse(val messages: List<ChatMessage>)
+
+@Serializable
+data class SendMessageResponse(val message: ChatMessage)

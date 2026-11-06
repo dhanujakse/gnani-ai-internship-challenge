@@ -110,10 +110,17 @@ fun EmeraldAnimatedBackground(
         label = "particlePhase",
     )
 
+    val isDark = Brand.IsDark
+    val bg = Brand.PrimaryBg
+    val secBg = Brand.SecondaryBg
+    val secHi = Brand.SecondaryHighlight
+    val glowSubtle = Brand.EmeraldGlowSubtle
+    val pColor = Brand.HighlightAccent
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Brand.PrimaryBg)
+            .background(bg)
             .drawBehind {
                 val w = size.width
                 val h = size.height
@@ -123,13 +130,22 @@ fun EmeraldAnimatedBackground(
                 val orb1Y = h * (0.12f + 0.05f * cos(phase * 0.5f))
                 // drawRect, not drawCircle: drawCircle clips the gradient to a hard-edged disc
                 // the width of the screen, which showed as lines across the top and bottom.
+                val orb1Colors = if (isDark) {
+                    listOf(
+                        secBg.copy(alpha = 0.85f),
+                        secHi.copy(alpha = 0.35f),
+                        Color.Transparent,
+                    )
+                } else {
+                    listOf(
+                        Color(0xFFE2F4EA).copy(alpha = 0.85f),
+                        Color(0xFFCEEEDB).copy(alpha = 0.45f),
+                        Color.Transparent,
+                    )
+                }
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(
-                            Brand.SecondaryBg.copy(alpha = 0.85f),
-                            Brand.SecondaryHighlight.copy(alpha = 0.35f),
-                            Color.Transparent,
-                        ),
+                        colors = orb1Colors,
                         center = Offset(orb1X, orb1Y),
                         radius = w * 0.9f,
                     )
@@ -138,12 +154,20 @@ fun EmeraldAnimatedBackground(
                 // 2. Moving blurred mint light orb (bottom-center)
                 val orb2X = w * (0.5f + 0.12f * cos(phase * 0.6f))
                 val orb2Y = h * (0.78f + 0.06f * sin(phase * 0.4f))
+                val orb2Colors = if (isDark) {
+                    listOf(
+                        glowSubtle.copy(alpha = 0.22f),
+                        Color.Transparent,
+                    )
+                } else {
+                    listOf(
+                        Color(0xFFD6F2E2).copy(alpha = 0.40f),
+                        Color.Transparent,
+                    )
+                }
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(
-                            Brand.EmeraldGlowSubtle.copy(alpha = 0.22f),
-                            Color.Transparent,
-                        ),
+                        colors = orb2Colors,
                         center = Offset(orb2X, orb2Y),
                         radius = w * 0.75f,
                     )
@@ -159,9 +183,10 @@ fun EmeraldAnimatedBackground(
                 for ((idx, pos) in particleSeeds.withIndex()) {
                     val px = w * ((pos.first + 0.04f * sin(particlePhase + idx)) % 1f)
                     val py = h * ((pos.second - 0.06f * ((particlePhase / 6.28318f) + idx * 0.15f)) % 1f)
-                    val pAlpha = ((sin(particlePhase * 1.5f + idx) + 1f) / 2f * 0.35f).coerceIn(0.05f, 0.45f)
+                    val maxAlpha = if (isDark) 0.35f else 0.25f
+                    val pAlpha = ((sin(particlePhase * 1.5f + idx) + 1f) / 2f * maxAlpha).coerceIn(0.05f, 0.45f)
                     drawCircle(
-                        color = Brand.HighlightAccent.copy(alpha = pAlpha),
+                        color = pColor.copy(alpha = pAlpha),
                         radius = (1.5f + (idx % 3) * 0.8f).dp.toPx(),
                         center = Offset(px, py),
                     )
@@ -180,6 +205,8 @@ fun PrimaryButton(
     icon: ImageVector? = null,
     loading: Boolean = false,
 ) {
+    val isDark = Brand.IsDark
+    val btnContent = Brand.ButtonContent
     Button(
         onClick = onClick,
         enabled = enabled && !loading,
@@ -187,9 +214,9 @@ fun PrimaryButton(
         shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.buttonColors(
             containerColor = Brand.PrimaryAccent,
-            contentColor = Brand.PrimaryBg,
-            disabledContainerColor = Brand.CardBg.copy(alpha = 0.6f),
-            disabledContentColor = Brand.SecondaryText.copy(alpha = 0.4f),
+            contentColor = btnContent,
+            disabledContainerColor = if (isDark) Brand.CardBg.copy(alpha = 0.6f) else Color(0xFFD8EBE0),
+            disabledContentColor = if (isDark) Brand.SecondaryText.copy(alpha = 0.4f) else Color(0xFF8FA89A),
         ),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
     ) {
@@ -197,10 +224,10 @@ fun PrimaryButton(
             CircularProgressIndicator(
                 Modifier.size(20.dp),
                 strokeWidth = 2.dp,
-                color = Brand.PrimaryBg,
+                color = btnContent,
             )
         } else if (icon != null) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = Brand.PrimaryBg)
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = btnContent)
         }
         if (icon != null || loading) Spacer(Modifier.width(10.dp))
         Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
@@ -215,14 +242,16 @@ fun SecondaryButton(
     enabled: Boolean = true,
     icon: ImageVector? = null,
 ) {
+    val isDark = Brand.IsDark
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.heightIn(min = 48.dp),
         shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = Brand.SecondaryBg.copy(alpha = 0.45f),
+            containerColor = if (isDark) Brand.SecondaryBg.copy(alpha = 0.45f) else Brand.SecondaryBg,
             contentColor = Brand.HighlightAccent,
+            disabledContentColor = Brand.SecondaryText.copy(alpha = 0.38f),
         ),
         border = androidx.compose.foundation.BorderStroke(1.dp, Brand.Borders),
     ) {
@@ -244,6 +273,7 @@ fun AppCard(
     padding: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val isDark = Brand.IsDark
     val t = rememberInfiniteTransition(label = "cardBorderTransition")
     val sweepOffset by t.animateFloat(
         initialValue = -0.5f,
@@ -255,7 +285,7 @@ fun AppCard(
     val borderBrush = Brush.linearGradient(
         0.0f to Brand.Borders,
         (sweepOffset - 0.25f).coerceIn(0f, 1f) to Brand.Borders,
-        sweepOffset.coerceIn(0f, 1f) to Brand.HighlightAccent.copy(alpha = 0.45f),
+        sweepOffset.coerceIn(0f, 1f) to Brand.HighlightAccent.copy(alpha = if (isDark) 0.45f else 0.35f),
         (sweepOffset + 0.25f).coerceIn(0f, 1f) to Brand.Borders,
         1.0f to Brand.Borders,
     )
@@ -264,10 +294,10 @@ fun AppCard(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 4.dp,
+                elevation = if (isDark) 4.dp else 2.dp,
                 shape = MaterialTheme.shapes.large,
-                ambientColor = Brand.HighlightAccent.copy(alpha = 0.1f),
-                spotColor = Brand.HighlightAccent.copy(alpha = 0.15f),
+                ambientColor = if (isDark) Brand.HighlightAccent.copy(alpha = 0.1f) else Color(0x14005030),
+                spotColor = if (isDark) Brand.HighlightAccent.copy(alpha = 0.15f) else Color(0x1A005030),
             ),
         shape = MaterialTheme.shapes.large,
         color = Brand.CardBg,
@@ -277,7 +307,7 @@ fun AppCard(
             modifier = Modifier
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Brand.CardBg, Color(0xFF091A12))
+                        colors = listOf(Brand.CardBg, Brand.CardSurfaceEnd)
                     )
                 )
                 .padding(padding)
@@ -358,17 +388,18 @@ fun ErrorBanner(
 
 @Composable
 fun LoadingView(label: String, modifier: Modifier = Modifier) {
+    val highlight = Brand.HighlightAccent
     Column(modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(contentAlignment = Alignment.Center) {
             Canvas(Modifier.size(48.dp)) {
                 drawCircle(
                     brush = Brush.radialGradient(
-                        listOf(Brand.HighlightAccent.copy(alpha = 0.25f), Color.Transparent)
+                        listOf(highlight.copy(alpha = 0.25f), Color.Transparent)
                     )
                 )
             }
             CircularProgressIndicator(
-                color = Brand.HighlightAccent,
+                color = highlight,
                 trackColor = Brand.Borders,
             )
         }
@@ -426,11 +457,13 @@ fun Avatar(name: String, color: Color, size: Dp = 44.dp) {
  */
 @Composable
 fun Waveform(
-    color: Color = Brand.HighlightAccent,
+    color: Color = Color.Unspecified,
     modifier: Modifier = Modifier,
     bars: Int = 5,
     active: Boolean = true,
 ) {
+    val highlight = Brand.HighlightAccent
+    val barColor = if (color != Color.Unspecified) color else highlight
     val t = rememberInfiniteTransition(label = "wave")
     val phase by t.animateFloat(
         initialValue = 0f,
@@ -449,7 +482,7 @@ fun Waveform(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Brand.HighlightAccent.copy(alpha = 0.18f),
+                        highlight.copy(alpha = 0.18f),
                         Color.Transparent,
                     ),
                     radius = size.width * 0.6f,
@@ -469,7 +502,7 @@ fun Waveform(
 
             drawRoundRect(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Brand.HighlightAccent, color),
+                    colors = listOf(highlight, barColor),
                     startY = y,
                     endY = y + h,
                 ),
@@ -481,7 +514,7 @@ fun Waveform(
             // Sparkle dot above peak on alternate bars
             if (active && i % 2 == 1 && amp > 0.65f) {
                 drawCircle(
-                    color = Brand.HighlightAccent.copy(alpha = 0.75f),
+                    color = highlight.copy(alpha = 0.75f),
                     radius = (w * 0.35f),
                     center = Offset(x + w / 2f, (y - 3.dp.toPx()).coerceAtLeast(1.dp.toPx())),
                 )
@@ -495,6 +528,7 @@ fun Waveform(
  */
 @Composable
 fun LogoMark(size: Dp = 96.dp, animated: Boolean = true) {
+    val highlight = Brand.HighlightAccent
     val t = rememberInfiniteTransition(label = "logoBreath")
     val pulse by t.animateFloat(
         initialValue = 0.9f,
@@ -511,7 +545,7 @@ fun LogoMark(size: Dp = 96.dp, animated: Boolean = true) {
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Brand.HighlightAccent.copy(alpha = 0.22f * glow),
+                            highlight.copy(alpha = 0.22f * glow),
                             Color.Transparent,
                         ),
                         radius = (this.size.minDimension / 2f) * 1.4f,
@@ -543,6 +577,9 @@ fun GlowingMicButton(
     isListening: Boolean = true,
     size: Dp = 68.dp,
 ) {
+    val highlight = Brand.HighlightAccent
+    val primary = Brand.PrimaryAccent
+    val secondaryHi = Brand.SecondaryHighlight
     val t = rememberInfiniteTransition(label = "micAnimation")
 
     // Breathing pulse
@@ -588,7 +625,7 @@ fun GlowingMicButton(
                     val r1 = baseRadius * (1.0f + ripplePhase * 0.5f)
                     val a1 = ((1f - ripplePhase) * 0.55f).coerceIn(0f, 1f)
                     drawCircle(
-                        color = Brand.HighlightAccent.copy(alpha = a1),
+                        color = highlight.copy(alpha = a1),
                         radius = r1,
                         center = center,
                         style = Stroke(width = 2.dp.toPx()),
@@ -599,7 +636,7 @@ fun GlowingMicButton(
                     val r2 = baseRadius * (1.0f + phase2 * 0.5f)
                     val a2 = ((1f - phase2) * 0.45f).coerceIn(0f, 1f)
                     drawCircle(
-                        color = Brand.PrimaryAccent.copy(alpha = a2),
+                        color = primary.copy(alpha = a2),
                         radius = r2,
                         center = center,
                         style = Stroke(width = 1.5.dp.toPx()),
@@ -610,8 +647,8 @@ fun GlowingMicButton(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Brand.HighlightAccent.copy(alpha = breathAlpha * 0.45f),
-                            Brand.SecondaryHighlight.copy(alpha = 0.15f),
+                            highlight.copy(alpha = breathAlpha * 0.45f),
+                            secondaryHi.copy(alpha = 0.15f),
                             Color.Transparent,
                         ),
                         center = center,
@@ -648,7 +685,7 @@ fun GlowingMicButton(
             Icon(
                 imageVector = if (isMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
                 contentDescription = if (isMuted) "Unmute microphone" else "Mute microphone",
-                tint = if (isMuted) Brand.SecondaryText else Brand.PrimaryBg,
+                tint = if (isMuted) Brand.SecondaryText else Brand.ButtonContent,
                 modifier = Modifier.size(size * 0.46f),
             )
         }

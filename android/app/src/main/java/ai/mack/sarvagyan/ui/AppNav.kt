@@ -10,6 +10,8 @@ import ai.mack.sarvagyan.ui.screens.ActiveCallScreen
 import ai.mack.sarvagyan.ui.screens.AuthScreen
 import ai.mack.sarvagyan.ui.screens.CallSetupScreen
 import ai.mack.sarvagyan.ui.screens.CallSummaryScreen
+import ai.mack.sarvagyan.ui.screens.ChatConversationScreen
+import ai.mack.sarvagyan.ui.screens.GlobalChatScreen
 import ai.mack.sarvagyan.ui.screens.HelpScreen
 import ai.mack.sarvagyan.ui.screens.HomeScreen
 import ai.mack.sarvagyan.ui.screens.LanguageScreen
@@ -33,6 +35,7 @@ object Routes {
     @Serializable data object Help
     @Serializable data class Voicemail(val tab: Int = 0)
     @Serializable data class RecordVoicemail(val toId: String? = null, val toName: String? = null)
+    @Serializable data class ChatConversation(val conversationId: String)
 }
 
 @Composable
@@ -101,10 +104,18 @@ fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed:
         }
         composable<Routes.Help> { HelpScreen(onBack = { nav.popBackStack() }) }
         composable<Routes.Voicemail> { entry ->
-            VoicemailScreen(
+            GlobalChatScreen(
                 initialTab = entry.toRoute<Routes.Voicemail>().tab,
                 onBack = { nav.popBackStack() },
-                onRecord = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
+                onOpenConversation = { cid -> nav.navigate(Routes.ChatConversation(cid)) },
+                onRecordVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
+            )
+        }
+        composable<Routes.ChatConversation> { entry ->
+            val args = entry.toRoute<Routes.ChatConversation>()
+            ChatConversationScreen(
+                conversationId = args.conversationId,
+                onBack = { nav.popBackStack() },
             )
         }
         composable<Routes.RecordVoicemail> { entry ->

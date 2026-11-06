@@ -22,6 +22,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 import uuid
 from collections import defaultdict
@@ -71,6 +72,89 @@ class Services:
         self.calls: dict[str, dict] = {}  # call_id -> {code, host, participants{uid: language}, created}
         self.by_code: dict[str, str] = {}
         self._usage: dict[tuple[str, str], int] = defaultdict(int)
+        self.chat_audio_dir = self.settings.data_path / "chat_audio"
+        self.chat_audio_dir.mkdir(parents=True, exist_ok=True)
+        self.chat_sockets: dict[str, set[WebSocket]] = defaultdict(set)
+
+    async def broadcast_chat_message(self, cid: str, msg: dict) -> None:
+        members = self.db.get_conversation_members(cid)
+        for m in members:
+            uid = m.get("id") or m.get("user_id")
+            socks = self.chat_sockets.get(uid)
+            if not socks:
+                continue
+            target_lang = m.get("language") or "en-IN"
+            source_lang = msg.get("source_lang") or "en-IN"
+            orig_text = msg.get("original_text") or ""
+            translated_text = orig_text
+            is_translated = False
+
+            target_base = target_lang.split("-")[0].lower()
+            source_base = source_lang.split("-")[0].lower()
+
+            if orig_text and target_base != source_base:
+                cached = self.db.get_cached_translation(msg["id"], target_lang)
+                if cached:
+                    translated_text = cached
+                    is_translated = (translated_text != orig_text)
+                else:
+                    try:
+                        translated_text = await self.translator.translate(orig_text, source_lang, target_lang)
+                        self.db.store_cached_translation(msg["id"], target_lang, translated_text)
+                        is_translated = (translated_text != orig_text)
+                    except Exception as exc:
+                        log.warning("broadcast translation failed: %s", exc)
+                        translated_text = orig_text
+
+            payload = {
+                "type": "message",
+                "conversation_id": cid,
+                "message": {
+                    "id": msg["id"],
+                    "conversation_id": cid,
+                    "sender_id": msg["sender_id"],
+                    "sender_name": msg["sender_name"],
+                    "source_lang": source_lang,
+                    "original_text": orig_text,
+                    "translated_text": translated_text,
+                    "is_translated": is_translated,
+                    "audio_id": msg.get("audio_id"),
+                    "duration_ms": msg.get("duration_ms"),
+                    "created_at": msg["created_at"],
+                }
+            }
+            raw = json.dumps(payload, ensure_ascii=False)
+            dead = set()
+            for ws in list(socks):
+                try:
+                    await ws.send_text(raw)
+                except Exception:
+                    dead.add(ws)
+            socks.difference_update(dead)
+
+    async def broadcast_chat_typing(self, cid: str, sender_id: str, sender_name: str) -> None:
+        members = self.db.get_conversation_members(cid)
+        for m in members:
+            uid = m.get("id") or m.get("user_id")
+            if uid == sender_id:
+                continue
+            socks = self.chat_sockets.get(uid)
+            if not socks:
+                continue
+            payload = {
+                "type": "typing",
+                "conversation_id": cid,
+                "user_id": sender_id,
+                "user_name": sender_name,
+            }
+            raw = json.dumps(payload, ensure_ascii=False)
+            dead = set()
+            for ws in list(socks):
+                try:
+                    await ws.send_text(raw)
+                except Exception:
+                    dead.add(ws)
+            socks.difference_update(dead)
 
     def quota(self, user_id: str) -> bool:
         key = (user_id, date.today().isoformat())
@@ -114,6 +198,8 @@ def create_app(services: Services | None = None) -> FastAPI:
         await app.state.services.voicemail.close()
 
     app = FastAPI(title="Sarvagyan API", version=__version__, lifespan=lifespan)
+    if services is not None:
+        app.state.services = services
     app.add_middleware(CORSMiddleware, allow_origins=[], allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
 
     def svc() -> Services:
@@ -128,17 +214,30 @@ def create_app(services: Services | None = None) -> FastAPI:
         return user
 
     def public_user(u: dict) -> dict:
-        return {"id": u["id"], "display_name": u["display_name"], "email": u["email"],
+        return {"id": u["id"], "display_name": u["display_name"], "username": u.get("username"), "email": u["email"],
                 "is_demo": bool(u["is_demo"]), "language": u["language"]}  # fmt: skip
 
     def session(u: dict, s: Services) -> dict:
         return {"token": issue_token(u["id"], s.settings.signing_key), "user": public_user(u)}
+
+    USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,24}$")
+
+    def check_username_valid(u: str | None, db: Database, exclude_id: str | None = None) -> str | None:
+        if not u:
+            return None
+        cleaned = u.strip()
+        if not USERNAME_RE.match(cleaned):
+            raise HTTPException(422, "Username must be 3-24 characters containing only letters, numbers, and underscores.")
+        if not db.is_username_available(cleaned, exclude_user_id=exclude_id):
+            raise HTTPException(409, "Username is already taken.")
+        return cleaned
 
     # --- auth -------------------------------------------------------------------------
     class RegisterIn(BaseModel):
         email: str = Field(min_length=3, max_length=200)
         password: str = Field(min_length=8, max_length=200)
         display_name: str = Field(min_length=1, max_length=60)
+        username: str | None = None
 
     class LoginIn(BaseModel):
         email: str
@@ -146,6 +245,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     class DemoIn(BaseModel):
         display_name: str = Field(min_length=1, max_length=60)
+        username: str | None = None
 
     @app.post("/v1/auth/register")
     def register(body: RegisterIn, s: Services = Depends(svc)) -> dict:
@@ -154,7 +254,8 @@ def create_app(services: Services | None = None) -> FastAPI:
             raise HTTPException(422, "Enter a valid email address.")
         if s.db.get_user_by_email(email):
             raise HTTPException(409, "An account with this email already exists. Sign in instead.")
-        user = s.db.create_user(body.display_name.strip(), email, hash_password(body.password), is_demo=False)
+        uname = check_username_valid(body.username, s.db)
+        user = s.db.create_user(body.display_name.strip(), email, hash_password(body.password), is_demo=False, username=uname)
         return session(user, s)
 
     @app.post("/v1/auth/login")
@@ -168,12 +269,14 @@ def create_app(services: Services | None = None) -> FastAPI:
     def demo(body: DemoIn, s: Services = Depends(svc)) -> dict:
         if not s.settings.demo_mode:
             raise HTTPException(403, "Guest sign-in is disabled on this server.")
-        user = s.db.create_user(body.display_name.strip(), None, None, is_demo=True)
+        uname = check_username_valid(body.username, s.db)
+        user = s.db.create_user(body.display_name.strip(), None, None, is_demo=True, username=uname)
         return session(user, s)
 
     class MeIn(BaseModel):
         display_name: str | None = Field(default=None, max_length=60)
         language: str | None = None
+        username: str | None = None
 
     @app.get("/v1/me")
     def me(user: dict = Depends(current_user)) -> dict:
@@ -181,12 +284,26 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.patch("/v1/me")
     def update_me(body: MeIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        uname = None
+        if body.username is not None:
+            uname = check_username_valid(body.username, s.db, exclude_id=user["id"])
         if body.language:
             try:
                 get_language(body.language)
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from None
-        return public_user(s.db.update_user(user["id"], display_name=body.display_name, language=body.language))
+        return public_user(s.db.update_user(user["id"], display_name=body.display_name, language=body.language, username=uname))
+
+    @app.get("/v1/users/check-username")
+    def check_username(username: str, s: Services = Depends(svc)) -> dict:
+        u = username.strip()
+        if not USERNAME_RE.match(u):
+            return {"available": False, "username": u, "reason": "3-24 characters (letters, numbers, underscores)"}
+        return {"available": s.db.is_username_available(u), "username": u}
+
+    @app.get("/v1/users/search")
+    def search_users(q: str = Query(min_length=1), user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        return {"users": s.db.search_users(q, current_user_id=user["id"])}
 
     # --- config -------------------------------------------------------------------------
     @app.get("/health")
@@ -403,6 +520,219 @@ def create_app(services: Services | None = None) -> FastAPI:
         own_voicemail(vid, user, s)
         s.db.delete_voicemail(vid)
         return {"ok": True}
+
+    # --- global chat (1-to-1 and group messaging) ------------------------------------
+    class DirectChatIn(BaseModel):
+        username: str | None = None
+        user_id: str | None = None
+
+    class GroupChatIn(BaseModel):
+        name: str = Field(min_length=1, max_length=80)
+        member_ids: list[str] = Field(min_length=1)
+
+    class SendMessageIn(BaseModel):
+        text: str = Field(min_length=1, max_length=5000)
+        language: str | None = None
+
+    @app.get("/v1/chat/conversations")
+    def list_conversations(user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        return {"conversations": s.db.list_user_conversations(user["id"])}
+
+    @app.post("/v1/chat/direct")
+    def start_direct_chat(body: DirectChatIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        other_user = None
+        if body.username:
+            other_user = s.db.get_user_by_username(body.username)
+        elif body.user_id:
+            other_user = s.db.get_user(body.user_id)
+        if not other_user:
+            raise HTTPException(404, "User not found.")
+        if other_user["id"] == user["id"]:
+            raise HTTPException(400, "Cannot start a chat with yourself.")
+        conv = s.db.get_or_create_direct_conversation(user["id"], other_user["id"])
+        conv["name"] = other_user["display_name"]
+        conv["other_user"] = public_user(other_user)
+        return {"conversation": conv}
+
+    @app.post("/v1/chat/groups")
+    def create_group(body: GroupChatIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        valid_member_ids = []
+        for mid in body.member_ids:
+            if mid == user["id"]:
+                continue
+            u = s.db.get_user(mid) or s.db.get_user_by_username(mid)
+            if u and u["id"] not in valid_member_ids:
+                valid_member_ids.append(u["id"])
+        if not valid_member_ids:
+            raise HTTPException(400, "At least one other member is required to create a group.")
+        conv = s.db.create_group_conversation(user["id"], body.name.strip(), valid_member_ids)
+        return {"conversation": conv}
+
+    @app.get("/v1/chat/conversations/{cid}")
+    def get_conversation_details(cid: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        if not s.db.is_conversation_member(cid, user["id"]):
+            raise HTTPException(403, "You are not a member of this conversation.")
+        conv = s.db.get_conversation(cid)
+        if not conv:
+            raise HTTPException(404, "Conversation not found.")
+        conv["members"] = s.db.get_conversation_members(cid)
+        return {"conversation": conv}
+
+    @app.get("/v1/chat/conversations/{cid}/messages")
+    async def get_messages(cid: str, limit: int = 50, before: float | None = None,
+                           user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        if not s.db.is_conversation_member(cid, user["id"]):
+            raise HTTPException(403, "You are not a member of this conversation.")
+        s.db.mark_conversation_read(cid, user["id"])
+        raw_msgs = s.db.get_messages(cid, limit=limit, before=before)
+        target_lang = user.get("language") or "en-IN"
+        target_base = target_lang.split("-")[0].lower()
+
+        out = []
+        for msg in raw_msgs:
+            orig = msg.get("original_text") or ""
+            src_lang = msg.get("source_lang") or "en-IN"
+            src_base = src_lang.split("-")[0].lower()
+            trans = orig
+            is_trans = False
+
+            if orig and target_base != src_base:
+                cached = s.db.get_cached_translation(msg["id"], target_lang)
+                if cached:
+                    trans = cached
+                    is_trans = (trans != orig)
+                else:
+                    try:
+                        trans = await s.translator.translate(orig, src_lang, target_lang)
+                        s.db.store_cached_translation(msg["id"], target_lang, trans)
+                        is_trans = (trans != orig)
+                    except Exception as exc:
+                        log.warning("get_messages translation error: %s", exc)
+                        trans = orig
+
+            item = dict(msg)
+            item["translated_text"] = trans
+            item["is_translated"] = is_trans
+            if item.get("audio_id"):
+                item["audio_url"] = f"/v1/chat/audio/{item['audio_id']}"
+            out.append(item)
+
+        return {"messages": out}
+
+    @app.post("/v1/chat/conversations/{cid}/messages")
+    async def send_message(cid: str, body: SendMessageIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        if not s.db.is_conversation_member(cid, user["id"]):
+            raise HTTPException(403, "You are not a member of this conversation.")
+        text = body.text.strip()
+        if not text:
+            raise HTTPException(422, "Message text cannot be empty.")
+        src_lang = body.language or user.get("language") or "en-IN"
+        msg = s.db.insert_message(cid, user["id"], user["display_name"], src_lang, text)
+        await s.broadcast_chat_message(cid, msg)
+        return {"message": msg}
+
+    @app.post("/v1/chat/conversations/{cid}/voice")
+    async def send_voice_message(cid: str, req: Request, language: str = Query("ta-IN"),
+                                 user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        if not s.db.is_conversation_member(cid, user["id"]):
+            raise HTTPException(403, "You are not a member of this conversation.")
+        pcm = await req.body()
+        if len(pcm) < vm.MIN_BYTES:
+            raise HTTPException(422, "Voice message is too short.")
+        if len(pcm) > vm.MAX_BYTES:
+            raise HTTPException(422, "Voice message exceeds the 60-second limit.")
+
+        audio_id = uuid.uuid4().hex
+        audio_file = s.chat_audio_dir / f"{audio_id}.pcm"
+        audio_file.write_bytes(pcm)
+        duration_ms = int(len(pcm) / (vm.SAMPLE_RATE * 2) * 1000)
+
+        transcribed_text = ""
+        detected_lang = language
+        try:
+            transcribed_text, detected = await vm.transcribe(s.recognizer, pcm, language)
+            if detected:
+                detected_lang = detected
+        except Exception as exc:
+            log.warning("chat voice transcription error: %s", exc)
+
+        if not transcribed_text:
+            transcribed_text = "[Voice Message]"
+
+        msg = s.db.insert_message(cid, user["id"], user["display_name"], detected_lang, transcribed_text,
+                                  audio_id=audio_id, duration_ms=duration_ms)
+        await s.broadcast_chat_message(cid, msg)
+        return {"message": msg}
+
+    @app.get("/v1/chat/audio/{audio_id}")
+    def get_chat_audio(audio_id: str, s: Services = Depends(svc)) -> StreamingResponse:
+        audio_file = s.chat_audio_dir / f"{audio_id}.pcm"
+        if not audio_file.is_file():
+            raise HTTPException(404, "Audio file not found.")
+        data = audio_file.read_bytes()
+        return StreamingResponse(iter([data]), media_type="application/octet-stream",
+                                 headers={"X-Sample-Rate": str(vm.SAMPLE_RATE)})
+
+    @app.post("/v1/chat/conversations/{cid}/members")
+    def add_member(cid: str, body: dict, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        role = s.db.get_member_role(cid, user["id"])
+        if role != "admin":
+            raise HTTPException(403, "Only admins can add members to this group.")
+        target_uid = body.get("user_id")
+        if not target_uid and body.get("username"):
+            tu = s.db.get_user_by_username(body["username"])
+            target_uid = tu["id"] if tu else None
+        if not target_uid or not s.db.get_user(target_uid):
+            raise HTTPException(404, "User not found.")
+        s.db.add_conversation_member(cid, target_uid, role="member")
+        return {"ok": True}
+
+    @app.delete("/v1/chat/conversations/{cid}/members/{uid}")
+    def remove_member(cid: str, uid: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        role = s.db.get_member_role(cid, user["id"])
+        if user["id"] != uid and role != "admin":
+            raise HTTPException(403, "Only admins can remove members.")
+        s.db.remove_conversation_member(cid, uid)
+        return {"ok": True}
+
+    @app.websocket("/v1/chat/ws")
+    async def chat_socket(ws: WebSocket) -> None:
+        s: Services = app.state.services
+        token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+        if not token:
+            token = ws.query_params.get("token", "")
+        uid = verify_token(token, s.settings.signing_key) if token else None
+        user = s.db.get_user(uid) if uid else None
+        if user is None:
+            await ws.close(code=4401, reason="unauthorized")
+            return
+        await ws.accept()
+        s.chat_sockets[user["id"]].add(ws)
+        try:
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    break
+                text = msg.get("text") or ""
+                if not text:
+                    continue
+                try:
+                    event = json.loads(text)
+                except Exception:
+                    continue
+                kind = event.get("type")
+                if kind == "typing":
+                    cid = event.get("conversation_id")
+                    if cid and s.db.is_conversation_member(cid, user["id"]):
+                        await s.broadcast_chat_typing(cid, user["id"], user["display_name"])
+                elif kind == "ping":
+                    await ws.send_text(json.dumps({"type": "pong", "t": event.get("t")}))
+        except (WebSocketDisconnect, asyncio.TimeoutError, RuntimeError):
+            pass
+        finally:
+            s.chat_sockets[user["id"]].discard(ws)
+            with contextlib.suppress(Exception):
+                await ws.close()
 
     # --- live call socket ----------------------------------------------------------------
     @app.websocket("/v1/calls/{call_id}/ws")

@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.History
@@ -155,11 +156,11 @@ fun HomeScreen(
                     Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Brand.PrimaryAccent, Brand.HighlightAccent))).padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.Call, contentDescription = null, tint = Brand.PrimaryBg, modifier = Modifier.size(36.dp))
+                    Icon(Icons.Filled.Call, contentDescription = null, tint = Brand.ButtonContent, modifier = Modifier.size(36.dp))
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Start a call", style = MaterialTheme.typography.headlineSmall, color = Brand.PrimaryBg, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                        Text("Get an invitation code to share", color = Brand.PrimaryBg.copy(alpha = 0.85f))
+                        Text("Start a call", style = MaterialTheme.typography.headlineSmall, color = Brand.ButtonContent, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("Get an invitation code to share", color = Brand.ButtonContent.copy(alpha = 0.85f))
                     }
                 }
             }
@@ -199,11 +200,11 @@ fun HomeScreen(
         Spacer(Modifier.height(12.dp))
         AppCard(Modifier.clickable(role = Role.Button, onClick = onVoicemail)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Voicemail, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
+                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Voicemail", style = MaterialTheme.typography.titleMedium)
-                    Text("Leave a message in your language; they hear it in theirs", style = MaterialTheme.typography.bodyMedium,
+                    Text("Global Chat", style = MaterialTheme.typography.titleMedium)
+                    Text("Chats, groups and voice messages in any language", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (unread > 0) StatusChip("$unread new", LocalCallColors.current.success)

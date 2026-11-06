@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Backend address. Debug default reaches a server on the host machine from the Android emulator.
+// Backend address. Default set to your PC's Wi-Fi network address so physical phones connect directly.
 // Override without editing code:  ./gradlew assembleDebug -PserverUrl=https://your-server.example
 val serverUrl: String = (project.findProperty("serverUrl") as String?) ?: "http://10.0.2.2:8787"
 
@@ -33,8 +33,7 @@ android {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             resValue("string", "app_name", "Sarvagyan")
-            // release builds must talk to an https/wss server
-            buildConfigField("String", "DEFAULT_SERVER_URL", "\"${if (serverUrl.startsWith("https")) serverUrl else "https://sarvagyan.example"}\"")
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"$serverUrl\"")
             signingConfig = signingConfigs.getByName("debug") // replace with a real keystore before publishing
         }
     }

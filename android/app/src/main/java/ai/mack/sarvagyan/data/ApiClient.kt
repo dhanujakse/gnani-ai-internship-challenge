@@ -109,14 +109,21 @@ class ApiClient(
     }
 
     suspend fun health(): Health = request("GET", "/health", null, Health.serializer())
-    suspend fun register(email: String, password: String, name: String): Session =
-        request("POST", "/v1/auth/register", obj("email" to email, "password" to password, "display_name" to name), Session.serializer())
+    suspend fun register(email: String, password: String, name: String, username: String? = null): Session =
+        request("POST", "/v1/auth/register", obj("email" to email, "password" to password, "display_name" to name, "username" to username), Session.serializer())
     suspend fun login(email: String, password: String): Session =
         request("POST", "/v1/auth/login", obj("email" to email, "password" to password), Session.serializer())
-    suspend fun demo(name: String): Session = request("POST", "/v1/auth/demo", obj("display_name" to name), Session.serializer())
+    suspend fun demo(name: String, username: String? = null): Session =
+        request("POST", "/v1/auth/demo", obj("display_name" to name, "username" to username), Session.serializer())
     suspend fun me(): User = request("GET", "/v1/me", null, User.serializer())
-    suspend fun updateMe(name: String? = null, language: String? = null): User =
-        request("PATCH", "/v1/me", obj("display_name" to name, "language" to language), User.serializer())
+    suspend fun updateMe(name: String? = null, language: String? = null, username: String? = null): User =
+        request("PATCH", "/v1/me", obj("display_name" to name, "language" to language, "username" to username), User.serializer())
+
+    suspend fun checkUsername(username: String): CheckUsernameResponse =
+        request("GET", "/v1/users/check-username?username=$username", null, CheckUsernameResponse.serializer())
+
+    suspend fun searchUsers(query: String): SearchUsersResponse =
+        request("GET", "/v1/users/search?q=$query", null, SearchUsersResponse.serializer())
     suspend fun languages(): LanguagesResponse = request("GET", "/v1/languages", null, LanguagesResponse.serializer())
     suspend fun createCall(language: String): CallInfo = request("POST", "/v1/calls", obj("language" to language), CallInfo.serializer())
     suspend fun joinCall(code: String, language: String): CallInfo =
@@ -163,6 +170,66 @@ class ApiClient(
             }
         }
     }
+
+    suspend fun conversations(): ConversationsResponse =
+        request("GET", "/v1/chat/conversations", null, ConversationsResponse.serializer())
+
+    suspend fun directChat(username: String? = null, userId: String? = null): SingleConversationResponse =
+        request("POST", "/v1/chat/direct", obj("username" to username, "user_id" to userId), SingleConversationResponse.serializer())
+
+    suspend fun createGroup(name: String, memberIds: List<String>): SingleConversationResponse {
+        val jsonArray = kotlinx.serialization.json.buildJsonArray {
+            memberIds.forEach { add(JsonPrimitive(it)) }
+        }
+        val body = buildJsonObject {
+            put("name", JsonPrimitive(name))
+            put("member_ids", jsonArray)
+        }
+        return send("POST", baseUrl().trimEnd('/') + "/v1/chat/groups", body.toString().toRequestBody(jsonType), SingleConversationResponse.serializer())
+    }
+
+    suspend fun conversation(id: String): SingleConversationResponse =
+        request("GET", "/v1/chat/conversations/$id", null, SingleConversationResponse.serializer())
+
+    suspend fun chatMessages(conversationId: String, limit: Int = 50, before: Double? = null): ChatMessagesResponse {
+        val path = if (before != null) "/v1/chat/conversations/$conversationId/messages?limit=$limit&before=$before"
+        else "/v1/chat/conversations/$conversationId/messages?limit=$limit"
+        return request("GET", path, null, ChatMessagesResponse.serializer())
+    }
+
+    suspend fun sendChatMessage(conversationId: String, text: String, language: String? = null): SendMessageResponse =
+        request("POST", "/v1/chat/conversations/$conversationId/messages", obj("text" to text, "language" to language), SendMessageResponse.serializer())
+
+    suspend fun sendChatVoice(conversationId: String, language: String, pcm: ByteArray): SendMessageResponse {
+        val url = (baseUrl().trimEnd('/') + "/v1/chat/conversations/$conversationId/voice").toHttpUrl().newBuilder()
+            .addQueryParameter("language", language)
+            .build().toString()
+        return send("POST", url, pcm.toRequestBody("application/octet-stream".toMediaType()), SendMessageResponse.serializer())
+    }
+
+    suspend fun streamChatAudio(audioId: String, onChunk: (ByteArray, Int) -> Unit) = withContext(Dispatchers.IO) {
+        val call = http.newCall(authorised(baseUrl().trimEnd('/') + "/v1/chat/audio/$audioId").get().build())
+        currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
+        val response = try {
+            call.await()
+        } catch (e: IOException) {
+            throw ApiException(0, "Can't reach the Sarvagyan server. Check your connection.")
+        }
+        response.use { r ->
+            if (!r.isSuccessful) throw ApiException(r.code, errorMessage(r.code, r.body.string()))
+            val input = r.body.byteStream()
+            val buf = ByteArray(8192)
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val n = try { input.read(buf) } catch (e: IOException) { break }
+                if (n < 0) break
+                if (n > 0) onChunk(buf, n)
+            }
+        }
+    }
+
+    fun chatWebSocketUrl(): String =
+        baseUrl().trimEnd('/').replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/v1/chat/ws"
 
     fun webSocketUrl(callId: String): String =
         baseUrl().trimEnd('/').replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/v1/calls/$callId/ws"

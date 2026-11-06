@@ -144,6 +144,11 @@ fun SettingsScreen(onBack: () -> Unit, onLanguages: () -> Unit, onHelp: () -> Un
     val c = LocalContext.current.container
     val scope = rememberCoroutineScope()
     val s by c.settings.collectAsStateWithLifecycle()
+    val user by c.user.collectAsStateWithLifecycle()
+    var usernameDraft by remember(user?.username) { mutableStateOf(user?.username ?: "") }
+    var usernameError by remember { mutableStateOf<String?>(null) }
+    var usernameSaved by remember { mutableStateOf(false) }
+    var usernameBusy by remember { mutableStateOf(false) }
     var serverDraft by remember(s.serverUrl) { mutableStateOf(s.serverUrl) }
     var diag by remember { mutableStateOf<JsonObject?>(null) }
     var diagError by remember { mutableStateOf<String?>(null) }
@@ -153,6 +158,60 @@ fun SettingsScreen(onBack: () -> Unit, onLanguages: () -> Unit, onHelp: () -> Un
     fun update(t: (AppSettings) -> AppSettings) = scope.launch { c.settingsStore.update(t) }
 
     ScreenScaffold("Settings", onBack) {
+        SectionTitle("Profile and username")
+        AppCard {
+            Text(user?.displayName ?: "User", style = MaterialTheme.typography.titleMedium)
+            Text(user?.email ?: (if (user?.isDemo == true) "Guest account" else ""), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = usernameDraft,
+                onValueChange = {
+                    usernameDraft = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' }
+                    usernameError = null
+                    usernameSaved = false
+                },
+                label = { Text("Unique username (@username)") },
+                placeholder = { Text("e.g. john_doe") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            usernameError?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (usernameSaved) {
+                Spacer(Modifier.height(4.dp))
+                Text("Username updated successfully!", color = LocalCallColors.current.success, style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(8.dp))
+            SecondaryButton("Save username", {
+                usernameBusy = true
+                usernameError = null
+                usernameSaved = false
+                scope.launch {
+                    try {
+                        val trimmed = usernameDraft.trim()
+                        if (trimmed.length < 3 || trimmed.length > 24) {
+                            usernameError = "Username must be 3 to 24 characters."
+                            return@launch
+                        }
+                        val check = c.api.checkUsername(trimmed)
+                        if (!check.available && trimmed != user?.username) {
+                            usernameError = "Username @$trimmed is already taken."
+                            return@launch
+                        }
+                        val updated = c.api.updateMe(username = trimmed)
+                        c.user.value = updated
+                        usernameSaved = true
+                    } catch (e: Exception) {
+                        usernameError = (e as? ApiException)?.message ?: e.message
+                    } finally {
+                        usernameBusy = false
+                    }
+                }
+            }, enabled = usernameDraft.isNotBlank() && usernameDraft != (user?.username ?: "") && !usernameBusy)
+        }
+
         SectionTitle("Language and voice")
         AppCard(Modifier.clickable(role = Role.Button, onClick = onLanguages)) {
             Text("${c.language(s.myLanguage)?.name ?: s.myLanguage} · voice ${s.voice ?: "default"} · ${"%.2f".format(s.speed)}×")

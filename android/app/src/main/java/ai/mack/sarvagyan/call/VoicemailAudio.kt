@@ -77,45 +77,171 @@ object VoicemailRecorder {
     }
 }
 
-/** Plays a stream of 16 kHz mono PCM chunks through the media speaker. */
+/**
+ * Plays a stream of 16 kHz mono PCM chunks through the media speaker.
+ * Guarantees strict 16-bit PCM frame alignment (preventing byte-swapping static noise),
+ * pre-buffers to prevent hardware starvation underruns, strips any container headers,
+ * and waits dynamically for the full duration of the message.
+ */
 class VoicemailPlayer(private val sampleRate: Int = TARGET_RATE) {
     private var track: AudioTrack? = null
-    private var written = 0L
+    private var writtenFrames = 0L
+    private var leftoverByte: Int = -1
+    private var isFirstChunk = true
+    private var started = false
+    private var bufferedBytes = 0
+    private val preRollBytes = sampleRate * 2 * 3 / 10 // ~300 ms pre-roll before starting playback
 
     private fun ensure(): AudioTrack {
         track?.let { return it }
         val min = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val bufSize = maxOf(min * 2, sampleRate * 2 * 2) // ~2 seconds buffer capacity to prevent underruns
         return AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(maxOf(min, sampleRate / 2 * 2)) // ~500 ms
+            .setBufferSizeInBytes(bufSize)
             .build()
-            .also { it.play(); track = it }
+            .also {
+                track = it
+            }
     }
 
-    /** Blocking write; call from a background thread. */
+    /**
+     * Blocking write; call from a background thread.
+     * Ensures strict 2-byte frame alignment so PCM samples are never corrupted by network chunk splits.
+     */
     fun write(data: ByteArray, length: Int) {
+        if (length <= 0) return
+        var offset = 0
+        var len = length
+
+        // Check for and skip RIFF WAV header on first chunk if present
+        if (isFirstChunk) {
+            isFirstChunk = false
+            if (len >= 44 && data[0] == 'R'.code.toByte() && data[1] == 'I'.code.toByte() &&
+                data[2] == 'F'.code.toByte() && data[3] == 'F'.code.toByte()
+            ) {
+                var dataOffset = 12
+                while (dataOffset + 8 <= len) {
+                    if (data[dataOffset] == 'd'.code.toByte() && data[dataOffset + 1] == 'a'.code.toByte() &&
+                        data[dataOffset + 2] == 't'.code.toByte() && data[dataOffset + 3] == 'a'.code.toByte()
+                    ) {
+                        dataOffset += 8 // skip "data" + 4-byte size field
+                        break
+                    }
+                    dataOffset++
+                }
+                if (dataOffset in 12..len) {
+                    offset = dataOffset
+                    len -= dataOffset
+                } else {
+                    offset = 44
+                    len -= 44
+                }
+            }
+        }
+
+        if (len <= 0) return
         val t = ensure()
-        val n = t.write(data, 0, length, AudioTrack.WRITE_BLOCKING)
-        if (n > 0) written += n / 2
+
+        // Combine any leftover byte from the previous chunk with the first byte of this chunk
+        if (leftoverByte != -1) {
+            val combined = byteArrayOf(leftoverByte.toByte(), data[offset])
+            leftoverByte = -1
+            offset += 1
+            len -= 1
+            val n = t.write(combined, 0, 2, AudioTrack.WRITE_BLOCKING)
+            if (n > 0) {
+                writtenFrames += n / 2
+                bufferedBytes += n
+            }
+        }
+
+        if (len <= 0) return
+
+        // Write an even number of bytes to preserve 16-bit frame alignment
+        val writeLen = if (len % 2 != 0) len - 1 else len
+        if (writeLen > 0) {
+            val n = t.write(data, offset, writeLen, AudioTrack.WRITE_BLOCKING)
+            if (n > 0) {
+                writtenFrames += n / 2
+                bufferedBytes += n
+            }
+        }
+
+        // Save any odd trailing byte for the next chunk
+        if (len % 2 != 0) {
+            leftoverByte = data[offset + writeLen].toInt() and 0xFF
+        }
+
+        // Start playback once pre-roll buffer threshold is met to avoid starvation clicks
+        if (!started && bufferedBytes >= preRollBytes) {
+            t.play()
+            started = true
+        }
     }
 
     /** Waits until everything written has been heard. */
     suspend fun drain() {
         val t = track ?: return
-        repeat(400) { // up to ~8 s
-            if ((t.playbackHeadPosition.toLong() and 0xFFFFFFFFL) >= written) return
+
+        // Flush any trailing odd byte padded with 0
+        if (leftoverByte != -1) {
+            val lastSample = byteArrayOf(leftoverByte.toByte(), 0x00)
+            leftoverByte = -1
+            val n = t.write(lastSample, 0, 2, AudioTrack.WRITE_BLOCKING)
+            if (n > 0) {
+                writtenFrames += n / 2
+                bufferedBytes += n
+            }
+        }
+
+        if (writtenFrames == 0L) return
+
+        if (!started) {
+            t.play()
+            started = true
+        }
+
+        val audioDurationMs = writtenFrames * 1000L / sampleRate
+        val maxWaitMs = audioDurationMs + 2500L
+        val maxSteps = (maxWaitMs / 20).toInt().coerceAtLeast(50)
+
+        for (i in 0 until maxSteps) {
+            val head = t.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+            if (head >= writtenFrames) break
             delay(20)
         }
     }
 
     fun release() {
-        runCatching { track?.pause(); track?.flush(); track?.stop() }
+        runCatching {
+            track?.let { t ->
+                if (t.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    t.pause()
+                }
+                t.flush()
+                t.stop()
+            }
+        }
         runCatching { track?.release() }
         track = null
-        written = 0
+        writtenFrames = 0L
+        leftoverByte = -1
+        bufferedBytes = 0
+        started = false
+        isFirstChunk = true
     }
 }
