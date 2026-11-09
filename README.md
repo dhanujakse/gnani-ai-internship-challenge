@@ -12,6 +12,10 @@ Built on **Gnani Prisma** (streaming speech-to-text), **Gnani Timbre** (streamin
 
 - How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - What is tested, what works, what remains: [docs/TESTING.md](docs/TESTING.md)
+- Privacy policy: [docs/PRIVACY.md](docs/PRIVACY.md) · Publishing on Google Play: [docs/PLAY_STORE.md](docs/PLAY_STORE.md)
+- Free hosting, quickest (Render free plan; data resets on restart): [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md)
+- Free hosting, no card (Azure for Students, HTTPS, TURN): [docs/DEPLOY_AZURE.md](docs/DEPLOY_AZURE.md)
+- Free hosting (Oracle Cloud Always Free, HTTPS, TURN; needs a card): [docs/DEPLOY_ORACLE.md](docs/DEPLOY_ORACLE.md)
 
 ## Repository
 
@@ -44,8 +48,11 @@ uv run uvicorn sarvagyan_server.main:app --host 0.0.0.0 --port 8787
 | `MYMEMORY_EMAIL` | recommended | Raises MyMemory's free quota from 5,000 to 50,000 chars/day |
 | `DEMO_MODE` | – | `true` allows "Continue as guest". Set `false` in production. |
 | `STUN_URLS` | – | Default `stun:stun.l.google.com:19302` |
-| `TURN_URLS`, `TURN_USERNAME`, `TURN_CREDENTIAL` | for mobile networks | A TURN relay (e.g. coturn, or a hosted TURN service) so WebRTC connects behind strict NATs |
-| `DATA_DIR` | – | SQLite location (users and call metadata only) |
+| `TURN_URLS` + `TURN_SECRET` | for mobile networks | A TURN relay (coturn with `use-auth-secret` and `static-auth-secret=<TURN_SECRET>`). Each user gets credentials valid 24 h. A hosted TURN service with a fixed login: `TURN_USERNAME`, `TURN_CREDENTIAL` instead. |
+| `TRUST_PROXY_HEADERS` | behind cloudflared | `true` so rate limits see each phone's real address, not the tunnel's |
+| `CHAT_RETENTION_DAYS` | – | Chat messages and voice clips are deleted after this many days (default 30) |
+| `RING_TIMEOUT_S` | – | Seconds a direct call rings before it counts as missed (default 30) |
+| `DATA_DIR` | – | SQLite location |
 
 For phones on another network, deploy the server behind **HTTPS** (any host that supports WebSockets — e.g. a VM with
 Caddy/nginx, Fly.io, Render, Railway) and build the app with `-PserverUrl=https://your-server`.
@@ -93,6 +100,9 @@ uv run python tools/test_peer.py --join <CODE> --language en-IN --say tests/fixt
 - Email accounts or clearly labelled demo guests; recent calls and favourites from real call history only.
 - Voicemail: record up to 60 s in your language (Tamil, Tanglish, …); the other person reads and hears it in theirs,
   and can reply the same way. Send to someone you have called, or by email address.
+- Chat, one-to-one and groups, each reader in their own language: sent / delivered / read ticks (read receipts can be
+  turned off), delete for me or for everyone, chat history kept 7 days, 30 days or a year.
+- Contacts by @username, ringing calls to contacts, missed call → leave a voicemail, block, "who can call me".
 - Privacy: no recording is stored; call transcripts only on the phone and only if you opt in. Voicemail text waits on
   the server until deleted, at most 7 days; its voice is generated when played.
 - Dark theme by default (deep navy, neon blue and teal), light/system themes, accessible labels.

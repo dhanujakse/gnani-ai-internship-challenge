@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -248,7 +249,7 @@ fun CallSetupScreen(join: Boolean, initialCode: String?, onBack: () -> Unit, onL
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit) {
+fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, onVoicemail: (String, String) -> Unit) {
     val context = LocalContext.current
     val c = context.container
     val session by c.activeCall.collectAsStateWithLifecycle()
@@ -267,7 +268,9 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit) {
     val peerLang = st.peer?.let { c.language(it.language) }
 
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
-    LaunchedEffect(st.status) { if (st.status == CallStatus.Ended || st.status == CallStatus.Failed) { delay(600); onFinished(call.info.callId) } }
+    LaunchedEffect(st.status) {
+        if ((st.status == CallStatus.Ended || st.status == CallStatus.Failed) && st.unanswered == null) { delay(600); onFinished(call.info.callId) }
+    }
     LaunchedEffect(st.conversation.turns.size, st.conversation.speaking) {
         val count = st.conversation.turns.size + st.conversation.speaking.size
         if (count > 0) listState.animateScrollToItem(count - 1)
@@ -281,7 +284,7 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit) {
             Avatar(st.peer?.name ?: "?", colors.peer)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(st.peer?.name ?: "Waiting for someone to join", style = MaterialTheme.typography.titleMedium)
+                Text(st.peer?.name ?: call.info.peerName ?: "Waiting for someone to join", style = MaterialTheme.typography.titleMedium)
                 val dur = st.startedAtMs?.let { formatDuration((now - it) / 1000) } ?: "--:--"
                 Text("$dur · ${statusLabel(st.status)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -308,7 +311,13 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit) {
 
         // conversation
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (st.status == CallStatus.WaitingForPeer || st.status == CallStatus.Connecting) {
+            if (st.unanswered != null) {
+                UnansweredCard(st.unanswered!!, call.info.peerName ?: "them",
+                    onVoicemail = call.info.peerId?.let { id -> { onVoicemail(id, call.info.peerName ?: "") } },
+                    onClose = onLeaveScreen)
+            } else if (call.info.ringing && (st.status == CallStatus.WaitingForPeer || st.status == CallStatus.Connecting)) {
+                RingingCard(call.info.peerName ?: "them", call.info.reachable)
+            } else if (st.status == CallStatus.WaitingForPeer || st.status == CallStatus.Connecting) {
                 InviteCard(call.info.inviteCode, call.info.inviteLink, onCopy = {
                     scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Sarvagyan invite", inviteText(call.info.inviteCode, call.info.inviteLink)))) }
                 }, onShare = { share(context, inviteText(call.info.inviteCode, call.info.inviteLink)) })
@@ -523,5 +532,36 @@ fun CallSummaryScreen(callId: String, onNewCall: () -> Unit, onHome: () -> Unit)
         Spacer(Modifier.height(8.dp))
         SecondaryButton("Back to home", onHome, Modifier.fillMaxWidth())
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun RingingCard(name: String, reachable: Boolean) {
+    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Avatar(name, LocalCallColors.current.peer, 96.dp)
+        Spacer(Modifier.height(16.dp))
+        Text("Calling $name…", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(8.dp))
+        StatusChip(if (reachable) "Ringing" else "Their phone is offline", LocalCallColors.current.warning, pulsing = true)
+        if (!reachable) {
+            Spacer(Modifier.height(8.dp))
+            Text("Sarvagyan isn't open on their phone right now. If they don't answer, you can leave a voicemail.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun UnansweredCard(reason: String, name: String, onVoicemail: (() -> Unit)?, onClose: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Avatar(name, LocalCallColors.current.peer, 96.dp)
+        Spacer(Modifier.height(16.dp))
+        Text(reason, style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(24.dp))
+        if (onVoicemail != null) {
+            PrimaryButton("Leave a voicemail", onVoicemail, Modifier.fillMaxWidth(), icon = Icons.Filled.Voicemail)
+            Spacer(Modifier.height(8.dp))
+        }
+        SecondaryButton("Close", onClose, Modifier.fillMaxWidth())
     }
 }

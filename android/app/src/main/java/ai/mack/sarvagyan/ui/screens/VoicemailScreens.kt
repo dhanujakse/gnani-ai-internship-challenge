@@ -8,6 +8,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import ai.mack.sarvagyan.data.str
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -670,6 +676,13 @@ fun ChatConversationScreen(
             delay(2_500)
         }
     }
+    // new messages, read receipts and deletions arrive at once over the app's connection
+    LaunchedEffect(conversationId) {
+        c.appSocket.events.collect { ev ->
+            if (ev.str("conversation_id") == conversationId &&
+                ev.str("type") in setOf("message", "chat_read", "message_deleted")) loadMessages()
+        }
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -816,6 +829,11 @@ fun ChatConversationScreen(
                         isPlaying = playingAudioId == msg.audioId,
                         onToggleOriginal = { showOriginalMap[msg.id] = !isOrig },
                         onPlayAudio = { msg.audioId?.let { playAudio(it) } },
+                        onDelete = { everyone ->
+                            scope.launch {
+                                try { c.api.deleteChatMessage(msg.id, everyone); loadMessages() } catch (e: ApiException) { error = e.message }
+                            }
+                        },
                     )
                 }
             }
@@ -894,6 +912,7 @@ fun ChatConversationScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatMessageBubble(
     message: ChatMessage,
@@ -903,7 +922,10 @@ private fun ChatMessageBubble(
     isPlaying: Boolean,
     onToggleOriginal: () -> Unit,
     onPlayAudio: () -> Unit,
+    onDelete: (forEveryone: Boolean) -> Unit,
 ) {
+    var menu by remember { mutableStateOf(false) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val bubbleColor = if (isMe) Brand.PrimaryAccent else Brand.CardBg
     val textColor = if (isMe) Brand.ButtonContent else Brand.PrimaryText
     val align = if (isMe) Alignment.End else Alignment.Start
@@ -921,10 +943,23 @@ private fun ChatMessageBubble(
             Modifier.clip(RoundedCornerShape(16.dp))
                 .background(bubbleColor)
                 .border(if (!isMe) 1.dp else 0.dp, Brand.Borders, RoundedCornerShape(16.dp))
+                .combinedClickable(onClick = {}, onLongClick = { menu = true }, onLongClickLabel = "Message options")
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (!message.deleted && displayText.isNotBlank()) DropdownMenuItem(text = { Text("Copy") }, onClick = {
+                    menu = false
+                    clipboard.setText(androidx.compose.ui.text.AnnotatedString(displayText))
+                })
+                DropdownMenuItem(text = { Text("Delete for me") }, onClick = { menu = false; onDelete(false) })
+                if (isMe && !message.deleted) DropdownMenuItem(text = { Text("Delete for everyone") }, onClick = { menu = false; onDelete(true) })
+            }
             Column {
-                if (message.audioId != null) {
+                if (message.deleted) {
+                    Text(if (isMe) "You deleted this message" else "This message was deleted",
+                        style = MaterialTheme.typography.bodyMedium, color = textColor.copy(alpha = 0.7f),
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                } else if (message.audioId != null) {
                     // Voice message bubble
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
@@ -958,7 +993,7 @@ private fun ChatMessageBubble(
                 }
 
                 // If message was translated, provide toggle button
-                if (message.isTranslated) {
+                if (message.isTranslated && !message.deleted) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (showingOriginal) "Show translated" else "View original (${message.sourceLang})",
@@ -971,12 +1006,23 @@ private fun ChatMessageBubble(
 
                 Spacer(Modifier.height(2.dp))
                 val timeStr = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date((message.createdAt * 1000).toLong()))
-                Text(
-                    timeStr,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    color = textColor.copy(alpha = 0.65f),
-                    modifier = Modifier.align(Alignment.End),
-                )
+                Row(Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        timeStr,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = textColor.copy(alpha = 0.65f),
+                    )
+                    // ticks on my messages: one = sent, two = delivered, two highlighted = read
+                    if (isMe && message.status != null && !message.deleted) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            if (message.status == "sent") Icons.Filled.Done else Icons.Filled.DoneAll,
+                            contentDescription = when (message.status) { "read" -> "Read"; "delivered" -> "Delivered"; else -> "Sent" },
+                            tint = if (message.status == "read") Brand.SoftBg else textColor.copy(alpha = 0.6f),
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
             }
         }
     }

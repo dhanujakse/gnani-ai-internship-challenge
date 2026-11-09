@@ -6,7 +6,7 @@ Status as of 30 Oct 2026. "Verified" means it was actually run; nothing below is
 
 | Suite | Command | Result |
 |---|---|---|
-| Server, offline (fake AI providers) | `cd server && uv run pytest -q` | **68 passed** |
+| Server, offline (fake AI providers) | `cd server && uv run pytest -q` | **107 passed** |
 | Server, live (real Gnani + MyMemory) | `cd server && uv run pytest -m live -s` | **passed** (two-way Tamil ↔ English) |
 | Android JVM unit tests | `cd android && ./gradlew :app:testDebugUnitTest` | **12 passed** |
 | Android build | `./gradlew :app:assembleDebug` | **builds** (52 MB debug APK) |
@@ -89,6 +89,9 @@ Longer sentences still depend on MyMemory; a stronger translation provider would
 
 ## Not yet tested / known gaps
 
+- **Security phase 1, direct calls and chat phase 3 (7 Nov 2026) are tested offline only** (`test_security.py`,
+  `test_direct_calls.py`, `test_chat_phase3.py`: also read receipts, delete for everyone, chat history length): refresh tokens, device sign-out, rate limits, contacts, blocking, ringing, answer,
+  decline, missed call. Not yet run on phones. A phone rings only while the app is running (no Firebase push yet).
 - **Phones on different networks / mobile data.** The network setup of the two-phone test was not recorded; on mobile
   data a TURN server is likely needed for the original-voice WebRTC path.
 - Bluetooth/headset routing and acoustic echo on real speakers (hardware echo cancellation varies by phone).

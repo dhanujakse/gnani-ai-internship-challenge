@@ -1,6 +1,13 @@
 package ai.mack.sarvagyan.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ai.mack.sarvagyan.container
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -10,6 +17,8 @@ import ai.mack.sarvagyan.ui.screens.ActiveCallScreen
 import ai.mack.sarvagyan.ui.screens.AuthScreen
 import ai.mack.sarvagyan.ui.screens.CallSetupScreen
 import ai.mack.sarvagyan.ui.screens.CallSummaryScreen
+import ai.mack.sarvagyan.ui.screens.ContactsScreen
+import ai.mack.sarvagyan.ui.screens.IncomingCallScreen
 import ai.mack.sarvagyan.ui.screens.ChatConversationScreen
 import ai.mack.sarvagyan.ui.screens.GlobalChatScreen
 import ai.mack.sarvagyan.ui.screens.HelpScreen
@@ -18,6 +27,7 @@ import ai.mack.sarvagyan.ui.screens.LanguageScreen
 import ai.mack.sarvagyan.ui.screens.OnboardingScreen
 import ai.mack.sarvagyan.ui.screens.RecordVoicemailScreen
 import ai.mack.sarvagyan.ui.screens.SettingsScreen
+import ai.mack.sarvagyan.ui.screens.PrivacyPolicyScreen
 import ai.mack.sarvagyan.ui.screens.SplashScreen
 import ai.mack.sarvagyan.ui.screens.VoicemailScreen
 import kotlinx.serialization.Serializable
@@ -32,7 +42,10 @@ object Routes {
     @Serializable data object ActiveCall
     @Serializable data class Summary(val callId: String)
     @Serializable data object Settings
+    @Serializable data class SettingsPage(val group: String)
+    @Serializable data object PrivacyPolicy
     @Serializable data object Help
+    @Serializable data object Contacts
     @Serializable data class Voicemail(val tab: Int = 0)
     @Serializable data class RecordVoicemail(val toId: String? = null, val toName: String? = null)
     @Serializable data class ChatConversation(val conversationId: String)
@@ -40,6 +53,16 @@ object Routes {
 
 @Composable
 fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed: () -> Unit) {
+    val incoming by LocalContext.current.container.incomingCall.collectAsStateWithLifecycle()
+    Box(Modifier.fillMaxSize()) {
+        Screens(nav, pendingJoinCode, onJoinCodeConsumed)
+        // someone is calling: the ringing screen covers whatever is open
+        incoming?.let { call -> IncomingCallScreen(call, onAnswered = { nav.navigate(Routes.ActiveCall) }) }
+    }
+}
+
+@Composable
+private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed: () -> Unit) {
     NavHost(nav, startDestination = Routes.Splash) {
         composable<Routes.Splash> {
             SplashScreen(onDone = { dest ->
@@ -67,6 +90,7 @@ fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed:
                 onHelp = { nav.navigate(Routes.Help) },
                 onResumeCall = { nav.navigate(Routes.ActiveCall) },
                 onVoicemail = { nav.navigate(Routes.Voicemail()) },
+                onContacts = { nav.navigate(Routes.Contacts) },
                 onRecordVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
                 onSignedOut = { nav.navigate(Routes.Auth) { popUpTo(Routes.Home) { inclusive = true } } },
             )
@@ -85,6 +109,14 @@ fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed:
             ActiveCallScreen(
                 onFinished = { callId -> nav.navigate(Routes.Summary(callId)) { popUpTo(Routes.Home) } },
                 onLeaveScreen = { nav.popBackStack(Routes.Home, inclusive = false) },
+                onVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) { popUpTo(Routes.Home) } },
+            )
+        }
+        composable<Routes.Contacts> {
+            ContactsScreen(
+                onBack = { nav.popBackStack() },
+                onCallStarted = { nav.navigate(Routes.ActiveCall) },
+                onVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
             )
         }
         composable<Routes.Summary> { entry ->
@@ -94,14 +126,9 @@ fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed:
                 onHome = { nav.popBackStack(Routes.Home, inclusive = false) },
             )
         }
-        composable<Routes.Settings> {
-            SettingsScreen(
-                onBack = { nav.popBackStack() },
-                onLanguages = { nav.navigate(Routes.Languages) },
-                onHelp = { nav.navigate(Routes.Help) },
-                onSignedOut = { nav.navigate(Routes.Auth) { popUpTo(0) } },
-            )
-        }
+        composable<Routes.Settings> { SettingsPageFor(nav, null) }
+        composable<Routes.SettingsPage> { entry -> SettingsPageFor(nav, entry.toRoute<Routes.SettingsPage>().group) }
+        composable<Routes.PrivacyPolicy> { PrivacyPolicyScreen(onBack = { nav.popBackStack() }) }
         composable<Routes.Help> { HelpScreen(onBack = { nav.popBackStack() }) }
         composable<Routes.Voicemail> { entry ->
             GlobalChatScreen(
@@ -128,4 +155,18 @@ fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed:
             )
         }
     }
+}
+
+@Composable
+private fun SettingsPageFor(nav: NavHostController, group: String?) {
+    SettingsScreen(
+        group = group,
+        onBack = { nav.popBackStack() },
+        onOpenGroup = { nav.navigate(Routes.SettingsPage(it)) },
+        onLanguages = { nav.navigate(Routes.Languages) },
+        onHelp = { nav.navigate(Routes.Help) },
+        onSignedOut = { nav.navigate(Routes.Auth) { popUpTo(0) } },
+        onContacts = { nav.navigate(Routes.Contacts) },
+        onPrivacyPolicy = { nav.navigate(Routes.PrivacyPolicy) },
+    )
 }

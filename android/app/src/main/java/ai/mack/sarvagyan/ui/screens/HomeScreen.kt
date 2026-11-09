@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -78,7 +79,7 @@ import java.util.Date
 fun HomeScreen(
     onStartCall: () -> Unit, onJoin: (String) -> Unit, onLanguages: () -> Unit, onSettings: () -> Unit,
     onHelp: () -> Unit, onResumeCall: () -> Unit, onSignedOut: () -> Unit,
-    onVoicemail: () -> Unit, onRecordVoicemail: (String, String) -> Unit,
+    onVoicemail: () -> Unit, onRecordVoicemail: (String, String) -> Unit, onContacts: () -> Unit,
 ) {
     val c = LocalContext.current.container
     val scope = rememberCoroutineScope()
@@ -92,6 +93,7 @@ fun HomeScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var code by remember { mutableStateOf("") }
     var unread by remember { mutableStateOf(0) }
+    val placeCall = rememberPlaceCall(onResumeCall)
 
     suspend fun load() {
         error = null
@@ -198,6 +200,18 @@ fun HomeScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+        AppCard(Modifier.clickable(role = Role.Button, onClick = onContacts)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.People, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Contacts", style = MaterialTheme.typography.titleMedium)
+                    Text("Call people directly: their phone rings", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         AppCard(Modifier.clickable(role = Role.Button, onClick = onVoicemail)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.AutoMirrored.Filled.Chat, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
@@ -220,7 +234,7 @@ fun HomeScreen(
             favourites.forEach { f ->
                 ContactRow(f.name, c.language(f.language)?.name ?: f.language, f.isDemo, starred = true,
                     onStar = { scope.launch { runCatching { c.api.setFavourite(f.id, false) }; load() } },
-                    onCall = onStartCall, onVoicemail = { onRecordVoicemail(f.id, f.name) })
+                    onCall = { placeCall(f.id, f.name) }, onVoicemail = { onRecordVoicemail(f.id, f.name) })
             }
         }
 

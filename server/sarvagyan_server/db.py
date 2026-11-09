@@ -1,8 +1,8 @@
-"""SQLite storage: users, call metadata, favourites and voicemail text.
+"""SQLite storage: users, sign-in sessions, call metadata, favourites, voicemail text and chat.
 
-No audio is ever stored. Live-call transcripts are never stored here. The only conversation text kept is a
-voicemail's recognised text and its translation, so it can wait for the recipient; it is deleted when either
-person deletes it, and automatically after 7 days.
+Live-call audio and live-call transcripts are never stored here. Conversation content that must wait for its
+reader is kept for a fixed time only: voicemail text (7 days, or until deleted) and chat messages with their
+voice clips (30 days by default, `CHAT_RETENTION_DAYS`). Refresh tokens are stored only as hashes.
 """
 
 import sqlite3
@@ -15,7 +15,14 @@ from typing import Any
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, email TEXT UNIQUE, display_name TEXT NOT NULL, password_hash TEXT,
-    is_demo INTEGER NOT NULL DEFAULT 0, language TEXT NOT NULL DEFAULT 'ta-IN', username TEXT UNIQUE, created_at REAL NOT NULL
+    is_demo INTEGER NOT NULL DEFAULT 0, language TEXT NOT NULL DEFAULT 'ta-IN', username TEXT UNIQUE, created_at REAL NOT NULL,
+    allow_calls TEXT NOT NULL DEFAULT 'contacts'
+);
+CREATE TABLE IF NOT EXISTS contacts (
+    user_id TEXT NOT NULL, contact_id TEXT NOT NULL, created_at REAL NOT NULL, PRIMARY KEY (user_id, contact_id)
+);
+CREATE TABLE IF NOT EXISTS blocks (
+    user_id TEXT NOT NULL, blocked_id TEXT NOT NULL, created_at REAL NOT NULL, PRIMARY KEY (user_id, blocked_id)
 );
 CREATE TABLE IF NOT EXISTS calls (
     id TEXT PRIMARY KEY, invite_code TEXT NOT NULL, host_id TEXT NOT NULL, status TEXT NOT NULL,
@@ -37,6 +44,11 @@ CREATE TABLE IF NOT EXISTS voicemails (
 CREATE INDEX IF NOT EXISTS voicemails_recipient ON voicemails(recipient_id, created_at);
 CREATE INDEX IF NOT EXISTS voicemails_sender ON voicemails(sender_id, created_at);
 
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, refresh_hash TEXT NOT NULL UNIQUE, prev_refresh_hash TEXT,
+    device TEXT, created_at REAL NOT NULL, last_used_at REAL NOT NULL, expires_at REAL NOT NULL, revoked_at REAL
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
 -- Multilingual Global Chat & Group Messaging
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY, is_group INTEGER NOT NULL DEFAULT 0, name TEXT,
@@ -62,6 +74,21 @@ CREATE TABLE IF NOT EXISTS message_translations (
 """
 
 
+# columns added after the first release: (table, column, definition), added to existing databases on start
+_COLUMNS = [
+    ("users", "read_receipts", "INTEGER NOT NULL DEFAULT 1"),
+    ("users", "chat_retention_days", "INTEGER NOT NULL DEFAULT 30"),
+    ("messages", "expires_at", "REAL"),
+    ("messages", "deleted_at", "REAL"),
+    ("conversation_members", "last_delivered_at", "REAL NOT NULL DEFAULT 0"),
+]
+_SCHEMA += """
+CREATE TABLE IF NOT EXISTS hidden_messages (
+    user_id TEXT NOT NULL, message_id TEXT NOT NULL, PRIMARY KEY (user_id, message_id)
+);
+"""
+
+
 class Database:
     def __init__(self, path: Path | str) -> None:
         if str(path) != ":memory:":
@@ -76,7 +103,13 @@ class Database:
                 cols = [r[1] for r in self._db.execute("PRAGMA table_info(users)").fetchall()]
                 if "username" not in cols:
                     self._db.execute("ALTER TABLE users ADD COLUMN username TEXT")
+                if "allow_calls" not in cols:
+                    self._db.execute("ALTER TABLE users ADD COLUMN allow_calls TEXT NOT NULL DEFAULT 'contacts'")
             self._db.executescript(_SCHEMA)
+            for table, col, ddl in _COLUMNS:
+                cols = [r[1] for r in self._db.execute(f"PRAGMA table_info({table})").fetchall()]
+                if col not in cols:
+                    self._db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
             self._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_username ON users(username)")
             self._db.commit()
 
@@ -119,13 +152,17 @@ class Database:
         rows = self._exec(
             """SELECT id, display_name, username, language, is_demo FROM users
                WHERE (LOWER(username) LIKE ? OR LOWER(display_name) LIKE ?) AND id != ?
+                 AND id NOT IN (SELECT blocked_id FROM blocks WHERE user_id = ?)
+                 AND id NOT IN (SELECT user_id FROM blocks WHERE blocked_id = ?)
                ORDER BY display_name ASC LIMIT ?""",
-            (q, q, current_user_id, limit),
+            (q, q, current_user_id, current_user_id, current_user_id, limit),
         )
         return [dict(r) for r in rows]
 
     def update_user(self, uid: str, **fields: Any) -> dict | None:
-        allowed = {k: v for k, v in fields.items() if k in ("display_name", "language", "username") and v is not None}
+        allowed = {k: v for k, v in fields.items()
+                   if k in ("display_name", "language", "username", "allow_calls", "read_receipts",
+                            "chat_retention_days") and v is not None}  # fmt: skip
         if allowed:
             sets = ", ".join(f"{k} = ?" for k in allowed)
             self._exec(f"UPDATE users SET {sets} WHERE id = ?", (*allowed.values(), uid))
@@ -356,17 +393,75 @@ class Database:
                        original_text: str, audio_id: str | None = None, duration_ms: int = 0) -> dict:
         mid = uuid.uuid4().hex
         now = time.time()
+        days = self._exec("""SELECT MIN(u.chat_retention_days) AS d FROM conversation_members m
+                              JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ?""", (conv_id,))  # fmt: skip
+        keep_days = int(days[0]["d"]) if days and days[0]["d"] else 30
         self._exec(
             """INSERT INTO messages (id, conversation_id, sender_id, sender_name, source_lang,
-                          original_text, audio_id, duration_ms, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (mid, conv_id, sender_id, sender_name, source_lang, original_text.strip(), audio_id, duration_ms, now),
+                          original_text, audio_id, duration_ms, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (mid, conv_id, sender_id, sender_name, source_lang, original_text.strip(), audio_id, duration_ms, now,
+             now + keep_days * 86400),
         )
         self._exec("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id))
         self._exec("UPDATE conversation_members SET last_read_at = ? WHERE conversation_id = ? AND user_id = ?",
                    (now, conv_id, sender_id))
         rows = self._exec("SELECT * FROM messages WHERE id = ?", (mid,))
         return dict(rows[0])
+
+    def conversation_of_audio(self, audio_id: str) -> str | None:
+        rows = self._exec("SELECT conversation_id FROM messages WHERE audio_id = ?", (audio_id,))
+        return rows[0]["conversation_id"] if rows else None
+
+    def purge_messages(self, older_than: float) -> list[str]:
+        """Deletes chat messages past their expiry (older ones without an expiry: older than the cutoff), with their
+        translations; returns their voice clip ids."""
+        now = time.time()
+        where = "(expires_at IS NOT NULL AND expires_at < ?) OR (expires_at IS NULL AND created_at < ?)"
+        old = self._exec(f"SELECT id, audio_id FROM messages WHERE {where}", (now, older_than))
+        if not old:
+            return []
+        ids = [r["id"] for r in old]
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            self._exec(f"DELETE FROM message_translations WHERE message_id IN ({marks})", tuple(chunk))
+            self._exec(f"DELETE FROM hidden_messages WHERE message_id IN ({marks})", tuple(chunk))
+            self._exec(f"DELETE FROM messages WHERE id IN ({marks})", tuple(chunk))
+        return [r["audio_id"] for r in old if r["audio_id"]]
+
+    def get_message(self, mid: str) -> dict | None:
+        rows = self._exec("SELECT * FROM messages WHERE id = ?", (mid,))
+        return dict(rows[0]) if rows else None
+
+    def delete_message_for_everyone(self, mid: str) -> str | None:
+        """Removes a message's content for everyone (a "deleted" marker stays); returns its voice clip id."""
+        msg = self.get_message(mid)
+        if msg is None:
+            return None
+        self._exec("UPDATE messages SET original_text = '', audio_id = NULL, duration_ms = 0, deleted_at = ? WHERE id = ?",
+                   (time.time(), mid))  # fmt: skip
+        self._exec("DELETE FROM message_translations WHERE message_id = ?", (mid,))
+        return msg["audio_id"]
+
+    def hide_message(self, user_id: str, mid: str) -> None:
+        self._exec("INSERT OR IGNORE INTO hidden_messages (user_id, message_id) VALUES (?, ?)", (user_id, mid))
+
+    def hidden_message_ids(self, user_id: str, conv_id: str) -> set[str]:
+        rows = self._exec("""SELECT h.message_id FROM hidden_messages h JOIN messages m ON m.id = h.message_id
+                             WHERE h.user_id = ? AND m.conversation_id = ?""", (user_id, conv_id))  # fmt: skip
+        return {r["message_id"] for r in rows}
+
+    def mark_delivered(self, conv_id: str, user_id: str) -> None:
+        self._exec("""UPDATE conversation_members SET last_delivered_at = ? WHERE conversation_id = ? AND user_id = ?""",
+                   (time.time(), conv_id, user_id))  # fmt: skip
+
+    def receipts(self, conv_id: str, except_user: str) -> list[dict]:
+        """For each other member: when they last received and last read the chat, and whether they share reads."""
+        rows = self._exec("""SELECT m.user_id, m.last_read_at, m.last_delivered_at, u.read_receipts
+                             FROM conversation_members m JOIN users u ON u.id = m.user_id
+                             WHERE m.conversation_id = ? AND m.user_id != ?""", (conv_id, except_user))  # fmt: skip
+        return [dict(r) for r in rows]
 
     def get_messages(self, conv_id: str, limit: int = 60, before: float | None = None) -> list[dict]:
         if before:
@@ -385,9 +480,16 @@ class Database:
         msgs.reverse()  # oldest first
         return msgs
 
-    def mark_conversation_read(self, conv_id: str, user_id: str) -> None:
-        self._exec("UPDATE conversation_members SET last_read_at = ? WHERE conversation_id = ? AND user_id = ?",
-                   (time.time(), conv_id, user_id))
+    def mark_conversation_read(self, conv_id: str, user_id: str) -> bool:
+        """Marks everything read; True when there were messages from others that had not been read yet."""
+        rows = self._exec("""SELECT COUNT(*) AS n FROM messages msg JOIN conversation_members m
+                             ON m.conversation_id = msg.conversation_id AND m.user_id = ?
+                             WHERE msg.conversation_id = ? AND msg.sender_id != ? AND msg.created_at > m.last_read_at""",
+                          (user_id, conv_id, user_id))  # fmt: skip
+        now = time.time()
+        self._exec("""UPDATE conversation_members SET last_read_at = ?, last_delivered_at = ?
+                      WHERE conversation_id = ? AND user_id = ?""", (now, now, conv_id, user_id))  # fmt: skip
+        return bool(rows and rows[0]["n"])
 
     def get_cached_translation(self, message_id: str, target_lang: str) -> str | None:
         rows = self._exec("SELECT translated_text FROM message_translations WHERE message_id = ? AND target_lang = ?",
@@ -397,3 +499,114 @@ class Database:
     def store_cached_translation(self, message_id: str, target_lang: str, translated_text: str) -> None:
         self._exec("INSERT OR REPLACE INTO message_translations (message_id, target_lang, translated_text, created_at) VALUES (?, ?, ?, ?)",
                    (message_id, target_lang, translated_text, time.time()))
+
+    # sign-in sessions (refresh tokens stored as SHA-256 hashes only) ------------------------
+    def create_session(self, user_id: str, refresh_hash: str, device: str | None, ttl_s: float) -> str:
+        sid = uuid.uuid4().hex
+        now = time.time()
+        self._exec("""INSERT INTO sessions (id, user_id, refresh_hash, device, created_at, last_used_at, expires_at)
+                      VALUES (?,?,?,?,?,?,?)""", (sid, user_id, refresh_hash, device, now, now, now + ttl_s))  # fmt: skip
+        return sid
+
+    def active_session(self, sid: str) -> dict | None:
+        rows = self._exec("SELECT * FROM sessions WHERE id = ? AND revoked_at IS NULL AND expires_at > ?",
+                          (sid, time.time()))  # fmt: skip
+        return dict(rows[0]) if rows else None
+
+    def session_by_refresh(self, refresh_hash: str) -> tuple[dict | None, bool]:
+        """(session, reused): reused=True when the hash is an already-replaced token of that session."""
+        rows = self._exec("SELECT * FROM sessions WHERE refresh_hash = ?", (refresh_hash,))
+        if rows:
+            return dict(rows[0]), False
+        rows = self._exec("SELECT * FROM sessions WHERE prev_refresh_hash = ?", (refresh_hash,))
+        return (dict(rows[0]), True) if rows else (None, False)
+
+    def rotate_session(self, sid: str, new_hash: str, ttl_s: float) -> None:
+        now = time.time()
+        self._exec("""UPDATE sessions SET prev_refresh_hash = refresh_hash, refresh_hash = ?, last_used_at = ?,
+                      expires_at = ? WHERE id = ?""", (new_hash, now, now + ttl_s, sid))  # fmt: skip
+
+    def revoke_session(self, sid: str) -> None:
+        self._exec("UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ?", (time.time(), sid))
+
+    def revoke_other_sessions(self, user_id: str, keep_sid: str | None) -> int:
+        rows = self._exec("SELECT id FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND id != ?",
+                          (user_id, keep_sid or ""))  # fmt: skip
+        for r in rows:
+            self.revoke_session(r["id"])
+        return len(rows)
+
+    def sessions(self, user_id: str) -> list[dict]:
+        rows = self._exec("""SELECT id, device, created_at, last_used_at FROM sessions
+                             WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?
+                             ORDER BY last_used_at DESC""", (user_id, time.time()))  # fmt: skip
+        return [dict(r) for r in rows]
+
+    def purge_sessions(self, older_than: float) -> None:
+        self._exec("DELETE FROM sessions WHERE expires_at < ? OR revoked_at < ?", (older_than, older_than))
+
+    # contacts and blocking ---------------------------------------------------------------
+    def add_contact(self, user_id: str, contact_id: str) -> None:
+        self._exec("INSERT OR IGNORE INTO contacts (user_id, contact_id, created_at) VALUES (?,?,?)",
+                   (user_id, contact_id, time.time()))  # fmt: skip
+
+    def remove_contact(self, user_id: str, contact_id: str) -> None:
+        self._exec("DELETE FROM contacts WHERE user_id = ? AND contact_id = ?", (user_id, contact_id))
+
+    def is_contact(self, user_id: str, contact_id: str) -> bool:
+        return bool(self._exec("SELECT 1 FROM contacts WHERE user_id = ? AND contact_id = ?", (user_id, contact_id)))
+
+    def contacts(self, user_id: str) -> list[dict]:
+        rows = self._exec(
+            """SELECT u.id, u.display_name, u.username, u.language, u.is_demo FROM contacts c
+               JOIN users u ON u.id = c.contact_id WHERE c.user_id = ? ORDER BY LOWER(u.display_name)""", (user_id,))  # fmt: skip
+        return [dict(r) for r in rows]
+
+    def block(self, user_id: str, blocked_id: str) -> None:
+        self._exec("INSERT OR IGNORE INTO blocks (user_id, blocked_id, created_at) VALUES (?,?,?)",
+                   (user_id, blocked_id, time.time()))  # fmt: skip
+        self.remove_contact(user_id, blocked_id)
+
+    def unblock(self, user_id: str, blocked_id: str) -> None:
+        self._exec("DELETE FROM blocks WHERE user_id = ? AND blocked_id = ?", (user_id, blocked_id))
+
+    def blocked_users(self, user_id: str) -> list[dict]:
+        rows = self._exec(
+            """SELECT u.id, u.display_name, u.username, u.language, u.is_demo FROM blocks b
+               JOIN users u ON u.id = b.blocked_id WHERE b.user_id = ? ORDER BY b.created_at DESC""", (user_id,))  # fmt: skip
+        return [dict(r) for r in rows]
+
+    def either_blocked(self, a: str, b: str) -> bool:
+        return bool(self._exec("""SELECT 1 FROM blocks WHERE (user_id = ? AND blocked_id = ?)
+                                  OR (user_id = ? AND blocked_id = ?)""", (a, b, b, a)))  # fmt: skip
+
+    # account deletion ----------------------------------------------------------------------
+    def delete_user(self, uid: str) -> list[str]:
+        """Removes a user and everything stored about them. Returns voice clip ids whose files must be deleted.
+
+        Their chat messages go entirely (other members see them disappear); chats left with no members go too.
+        Call records keep only the other person's side.
+        """
+        clips = [r["audio_id"] for r in self._exec(
+            "SELECT audio_id FROM messages WHERE sender_id = ? AND audio_id IS NOT NULL", (uid,))]  # fmt: skip
+        mine = "SELECT id FROM messages WHERE sender_id = ?"
+        self._exec(f"DELETE FROM message_translations WHERE message_id IN ({mine})", (uid,))
+        self._exec(f"DELETE FROM hidden_messages WHERE user_id = ? OR message_id IN ({mine})", (uid, uid))
+        self._exec("DELETE FROM messages WHERE sender_id = ?", (uid,))
+        self._exec("DELETE FROM conversation_members WHERE user_id = ?", (uid,))
+        empty = "SELECT id FROM conversations WHERE id NOT IN (SELECT conversation_id FROM conversation_members)"
+        clips += [r["audio_id"] for r in self._exec(
+            f"SELECT audio_id FROM messages WHERE conversation_id IN ({empty}) AND audio_id IS NOT NULL")]  # fmt: skip
+        self._exec(f"DELETE FROM message_translations WHERE message_id IN "
+                   f"(SELECT id FROM messages WHERE conversation_id IN ({empty}))")  # fmt: skip
+        self._exec(f"DELETE FROM messages WHERE conversation_id IN ({empty})")
+        self._exec(f"DELETE FROM conversations WHERE id IN ({empty})")
+        self._exec("DELETE FROM voicemails WHERE sender_id = ? OR recipient_id = ?", (uid, uid))
+        self._exec("DELETE FROM contacts WHERE user_id = ? OR contact_id = ?", (uid, uid))
+        self._exec("DELETE FROM blocks WHERE user_id = ? OR blocked_id = ?", (uid, uid))
+        self._exec("DELETE FROM favourites WHERE user_id = ? OR contact_id = ?", (uid, uid))
+        self._exec("DELETE FROM call_participants WHERE user_id = ?", (uid,))
+        self._exec("DELETE FROM calls WHERE id NOT IN (SELECT call_id FROM call_participants)")
+        self._exec("DELETE FROM sessions WHERE user_id = ?", (uid,))
+        self._exec("DELETE FROM users WHERE id = ?", (uid,))
+        return clips

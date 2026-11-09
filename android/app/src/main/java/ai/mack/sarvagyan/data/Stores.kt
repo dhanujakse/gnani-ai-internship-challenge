@@ -43,6 +43,8 @@ data class AppSettings(
     val speakerOn: Boolean = true,
     val saveTranscripts: Boolean = false, // opt-in only
     val privacyAcknowledged: Boolean = false,
+    val appLock: Boolean = false, // fingerprint / face / phone PIN to open the app
+    val blockScreenshots: Boolean = false,
 )
 
 class SettingsStore(private val context: Context) {
@@ -61,6 +63,8 @@ class SettingsStore(private val context: Context) {
         val speaker = booleanPreferencesKey("speaker_on")
         val save = booleanPreferencesKey("save_transcripts")
         val privacy = booleanPreferencesKey("privacy_ack")
+        val appLock = booleanPreferencesKey("app_lock")
+        val noShots = booleanPreferencesKey("block_screenshots")
         val langCache = stringPreferencesKey("languages_cache")
     }
 
@@ -80,6 +84,8 @@ class SettingsStore(private val context: Context) {
             speakerOn = p[K.speaker] ?: true,
             saveTranscripts = p[K.save] ?: false,
             privacyAcknowledged = p[K.privacy] ?: false,
+            appLock = p[K.appLock] ?: false,
+            blockScreenshots = p[K.noShots] ?: false,
         )
     }
 
@@ -102,6 +108,8 @@ class SettingsStore(private val context: Context) {
             p[K.speaker] = next.speakerOn
             p[K.save] = next.saveTranscripts
             p[K.privacy] = next.privacyAcknowledged
+            p[K.appLock] = next.appLock
+            p[K.noShots] = next.blockScreenshots
         }
     }
 
@@ -133,27 +141,48 @@ class TokenStore(context: Context) {
         return gen.generateKey()
     }
 
-    fun get(): String? {
-        cached?.let { return it }
-        val blob = prefs.getString("token", null) ?: return null
+    @Volatile private var cachedRefresh: String? = null
+
+    private fun read(name: String): String? {
+        val blob = prefs.getString(name, null) ?: return null
         return runCatching {
             val raw = Base64.decode(blob, Base64.NO_WRAP)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
             String(cipher.doFinal(raw.copyOfRange(12, raw.size)))
-        }.getOrNull().also { cached = it }
+        }.getOrNull()
     }
 
-    fun set(token: String?) {
-        cached = token
-        if (token == null) {
-            prefs.edit().remove("token").apply()
+    private fun write(name: String, value: String?) {
+        if (value == null) {
+            prefs.edit().remove(name).apply()
             return
         }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        val out = cipher.iv + cipher.doFinal(token.toByteArray())
-        prefs.edit().putString("token", Base64.encodeToString(out, Base64.NO_WRAP)).apply()
+        val out = cipher.iv + cipher.doFinal(value.toByteArray())
+        prefs.edit().putString(name, Base64.encodeToString(out, Base64.NO_WRAP)).apply()
+    }
+
+    /** The short-lived access token (15 minutes). */
+    fun get(): String? = cached ?: read("token").also { cached = it }
+
+    fun set(token: String?) {
+        cached = token
+        write("token", token)
+    }
+
+    /** The refresh token: replaced by the server on every use; both are encrypted with a Keystore key. */
+    fun getRefresh(): String? = cachedRefresh ?: read("refresh").also { cachedRefresh = it }
+
+    fun setRefresh(token: String?) {
+        cachedRefresh = token
+        write("refresh", token)
+    }
+
+    fun clear() {
+        set(null)
+        setRefresh(null)
     }
 }
 
@@ -164,13 +193,50 @@ data class SavedLine(val speaker: String, val original: String, val translation:
 data class SavedTranscript(val callId: String, val startedAt: Long, val durationS: Long, val peerName: String, val lines: List<SavedLine>)
 
 /** Transcripts are stored only on this device, only when the user opted in, and can be deleted any time. */
+/**
+ * Saved call transcripts (opt-in), encrypted on the phone with an AES-GCM key kept in the Android Keystore, so the
+ * files are unreadable outside the app. Transcripts saved by older versions as plain JSON are encrypted on first read.
+ */
 class TranscriptStore(context: Context, private val json: Json) {
     private val dir = File(context.filesDir, "transcripts").apply { mkdirs() }
+    private val alias = "sarvagyan_transcripts_key"
 
-    fun save(t: SavedTranscript) = File(dir, "${t.callId}.json").writeText(json.encodeToString(SavedTranscript.serializer(), t))
-    fun load(callId: String): SavedTranscript? =
-        File(dir, "$callId.json").takeIf { it.exists() }?.let { runCatching { json.decodeFromString(SavedTranscript.serializer(), it.readText()) }.getOrNull() }
-    fun delete(callId: String) = File(dir, "$callId.json").delete()
+    private fun key(): SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        gen.init(KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
+        return gen.generateKey()
+    }
+
+    private fun encFile(callId: String) = File(dir, "$callId.enc")
+    private fun legacyFile(callId: String) = File(dir, "$callId.json")
+
+    fun save(t: SavedTranscript) {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val plain = json.encodeToString(SavedTranscript.serializer(), t).toByteArray()
+        encFile(t.callId).writeBytes(cipher.iv + cipher.doFinal(plain))
+        legacyFile(t.callId).delete()
+    }
+
+    fun load(callId: String): SavedTranscript? {
+        encFile(callId).takeIf { it.exists() }?.let { f ->
+            return runCatching {
+                val raw = f.readBytes()
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
+                json.decodeFromString(SavedTranscript.serializer(), String(cipher.doFinal(raw.copyOfRange(12, raw.size))))
+            }.getOrNull()
+        }
+        val legacy = legacyFile(callId).takeIf { it.exists() } ?: return null
+        val t = runCatching { json.decodeFromString(SavedTranscript.serializer(), legacy.readText()) }.getOrNull() ?: return null
+        runCatching { save(t) } // re-save encrypted, delete the plain file
+        return t
+    }
+
+    fun delete(callId: String) = encFile(callId).delete() or legacyFile(callId).delete()
     fun deleteAll(): Int = dir.listFiles()?.count { it.delete() } ?: 0
     fun count(): Int = dir.listFiles()?.size ?: 0
 }

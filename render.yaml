@@ -1,0 +1,33 @@
+# Render Blueprint for the Sarvagyan server (free plan). See docs/DEPLOY_RENDER.md.
+# No secrets here: Render asks for the ones marked `sync: false` when the Blueprint is created.
+services:
+  - type: web
+    name: sarvagyan-server
+    runtime: python
+    plan: free
+    region: singapore  # closest Render region to India
+    rootDir: server
+    buildCommand: pip install uv==0.10.9 && uv sync --frozen --no-dev
+    # one process on purpose: calls live in memory
+    startCommand: .venv/bin/uvicorn sarvagyan_server.main:app --host 0.0.0.0 --port $PORT --proxy-headers --no-access-log
+    healthCheckPath: /health
+    autoDeploy: false  # deploy by hand from the dashboard, so a push doesn't restart live calls
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: FORWARDED_ALLOW_IPS  # only Render's proxy reaches the app; its X-Forwarded-For is the real client
+        value: "*"
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: DEMO_MODE
+        value: "true"
+      - key: GNANI_API_KEY
+        sync: false
+      - key: MYMEMORY_EMAIL
+        sync: false
+      - key: TURN_URLS  # optional relay for mobile data, e.g. a free metered.ca plan; leave empty to skip
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false

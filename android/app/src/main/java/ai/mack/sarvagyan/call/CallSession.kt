@@ -60,6 +60,7 @@ data class CallUiState(
     val notice: String? = null,
     val endReason: String? = null,
     val micStreaming: Boolean = false,
+    val unanswered: String? = null, // a ringing call that was declined or not answered: offer voicemail
 )
 
 /**
@@ -121,9 +122,9 @@ class CallSession(
     }
 
     private fun connectSocket() {
-        val token = api.currentToken() ?: return fail("Please sign in again.")
         socketJob?.cancel()
         socketJob = scope.launch {
+            val token = api.freshToken() ?: return@launch fail("Please sign in again.")
             socket.connect(api.webSocketUrl(info.callId), token).collect { ev -> onSocket(ev) }
         }
     }
@@ -353,6 +354,13 @@ class CallSession(
     private fun fail(message: String) {
         _state.update { it.copy(status = CallStatus.Failed, banner = Banner(message, severe = true), endReason = message) }
         teardown()
+    }
+
+    /** The person we rang declined or didn't answer; the server has already ended the call. */
+    fun markUnanswered(reason: String) {
+        if (ended) return
+        _state.update { it.copy(unanswered = reason) }
+        end(reason, notifyServer = false)
     }
 
     fun end(reason: String = "You ended the call.", notifyServer: Boolean = true) {

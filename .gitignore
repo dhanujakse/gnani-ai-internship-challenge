@@ -4,6 +4,7 @@
 backup/
 local.properties
 *.keystore
+keystore.properties
 *.jks
 
 # Python (server)
@@ -28,3 +29,6 @@ captures/
 .externalNativeBuild/
 .cxx/
 .kotlin/
+
+# deploy-from-pc.ps1 remembers the server IP, key path and DuckDNS name here (no secrets)
+deploy/.deploy.local.json

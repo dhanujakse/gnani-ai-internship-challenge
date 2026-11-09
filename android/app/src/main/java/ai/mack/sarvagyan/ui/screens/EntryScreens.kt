@@ -1,5 +1,10 @@
 package ai.mack.sarvagyan.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -73,6 +78,19 @@ fun SplashScreen(onDone: (Any) -> Unit) {
     val c = LocalContext.current.container
     var word by remember { mutableIntStateOf(0) }
     val words = listOf("வணக்கம்", "Hello", "नमस्ते", "Hello")
+    // the logo pops in (grows with a small bounce), then the name and tagline fade up beneath it
+    val logoScale = remember { Animatable(0.3f) }
+    val logoAlpha = remember { Animatable(0f) }
+    val textIn = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        launch { logoAlpha.animateTo(1f, tween(300)) }
+        logoScale.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessLow))
+    }
+    LaunchedEffect(Unit) {
+        delay(450)
+        textIn.animateTo(1f, tween(500, easing = FastOutSlowInEasing))
+    }
+    val rise = Modifier.graphicsLayer { alpha = textIn.value; translationY = (1f - textIn.value) * 40f }
     LaunchedEffect(Unit) {
         val started = System.currentTimeMillis()
         launch { while (true) { delay(450); word = (word + 1) % words.size } }
@@ -86,7 +104,7 @@ fun SplashScreen(onDone: (Any) -> Unit) {
             )
         }
         launch { c.refreshLanguages() }
-        delay((1300 - (System.currentTimeMillis() - started)).coerceAtLeast(0))
+        delay((1900 - (System.currentTimeMillis() - started)).coerceAtLeast(0)) // long enough to see the logo
         onDone(dest)
     }
     EmeraldAnimatedBackground {
@@ -94,15 +112,18 @@ fun SplashScreen(onDone: (Any) -> Unit) {
             Modifier.fillMaxSize().padding(24.dp),
             verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            LogoMark(112.dp)
+            Box(Modifier.graphicsLayer { scaleX = logoScale.value; scaleY = logoScale.value; alpha = logoAlpha.value }) {
+                LogoMark(140.dp)
+            }
             Spacer(Modifier.height(24.dp))
-            Text("Sarvagyan", style = MaterialTheme.typography.displaySmall, color = Brand.TextHi)
+            Text("Sarvagyan", style = MaterialTheme.typography.displaySmall, color = Brand.TextHi, modifier = rise)
             Spacer(Modifier.height(20.dp))
-            AnimatedContent(words[word], transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) }, label = "word") {
+            AnimatedContent(words[word], transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) }, label = "word",
+                modifier = rise) {
                 Text(it, style = MaterialTheme.typography.titleLarge, color = Brand.TextMid)
             }
             Spacer(Modifier.height(12.dp))
-            Text("Speak Naturally. Understand Everyone.", style = MaterialTheme.typography.bodyLarge, color = Brand.TextMid)
+            Text("Speak Naturally. Understand Everyone.", style = MaterialTheme.typography.bodyLarge, color = Brand.TextMid, modifier = rise)
         }
     }
 }
@@ -175,8 +196,7 @@ fun AuthScreen(onSignedIn: () -> Unit) {
             try {
                 if (server != c.settings.value.serverUrl) c.settingsStore.update { it.copy(serverUrl = server) }
                 val session = block()
-                c.tokens.set(session.token)
-                c.user.value = session.user
+                c.saveSession(session)
                 c.refreshLanguages()
                 onSignedIn()
             } catch (e: ApiException) {

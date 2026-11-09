@@ -1,5 +1,17 @@
 package ai.mack.sarvagyan.ui.screens
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Translate
+import ai.mack.sarvagyan.AppLock
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -139,9 +151,15 @@ fun LanguageScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onLanguages: () -> Unit, onHelp: () -> Unit, onSignedOut: () -> Unit) {
-    val c = LocalContext.current.container
+fun SettingsScreen(
+    group: String?, onBack: () -> Unit, onOpenGroup: (String) -> Unit, onLanguages: () -> Unit, onHelp: () -> Unit,
+    onSignedOut: () -> Unit, onContacts: () -> Unit, onPrivacyPolicy: () -> Unit,
+) {
+    val context = LocalContext.current
+    val c = context.container
+    var lockError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val s by c.settings.collectAsStateWithLifecycle()
     val user by c.user.collectAsStateWithLifecycle()
@@ -157,7 +175,16 @@ fun SettingsScreen(onBack: () -> Unit, onLanguages: () -> Unit, onHelp: () -> Un
     var savedCount by remember { mutableStateOf(c.transcripts.count()) }
     fun update(t: (AppSettings) -> AppSettings) = scope.launch { c.settingsStore.update(t) }
 
-    ScreenScaffold("Settings", onBack) {
+    ScreenScaffold(settingsGroups.firstOrNull { it.id == group }?.title ?: "Settings", onBack) {
+        if (group == null) {
+            SettingsHub(user?.displayName, user?.username, onOpen = onOpenGroup)
+            Spacer(Modifier.height(16.dp))
+            SecondaryButton("Sign out", { c.activeCall.value?.end(); c.signOut(); onSignedOut() }, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(24.dp))
+            return@ScreenScaffold
+        }
+        when (group) {
+            "account" -> {
         SectionTitle("Profile and username")
         AppCard {
             Text(user?.displayName ?: "User", style = MaterialTheme.typography.titleMedium)
@@ -212,18 +239,49 @@ fun SettingsScreen(onBack: () -> Unit, onLanguages: () -> Unit, onHelp: () -> Un
             }, enabled = usernameDraft.isNotBlank() && usernameDraft != (user?.username ?: "") && !usernameBusy)
         }
 
+        DevicesCard()
+
+                DeleteAccountCard(onDeleted = onSignedOut)
+                Spacer(Modifier.height(16.dp))
+                SecondaryButton("Sign out", { c.activeCall.value?.end(); c.signOut(); onSignedOut() }, Modifier.fillMaxWidth())
+            }
+            "privacy" -> {
+                SectionTitle("App lock")
+                AppCard {
+                    SettingSwitch("Lock Sarvagyan", "Ask for your fingerprint, face or phone PIN when the app opens or after 30 seconds away.",
+                        s.appLock) { on ->
+                        if (on && !AppLock.available(context)) lockError = "Set a screen lock (PIN, pattern or fingerprint) on your phone first."
+                        else update { it.copy(appLock = on) }
+                    }
+                    lockError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    SettingSwitch("Block screenshots", "Stops screenshots and screen recording of Sarvagyan, and hides it in the recent-apps view.",
+                        s.blockScreenshots) { on -> update { it.copy(blockScreenshots = on) } }
+                }
+                SectionTitle("Calls and contacts")
+                AppCard(Modifier.clickable(role = Role.Button, onClick = onContacts)) {
+                    Text("Who can call me: " + if (user?.allowCalls == "everyone") "Everyone" else "My contacts")
+                    Text("Change it, and see blocked people, in Contacts", color = MaterialTheme.colorScheme.primary)
+                }
+                SectionTitle("Call transcripts")
+                SettingSwitch("Save transcripts on this phone", "Off by default. Saved only on this phone, encrypted, never on our server. Audio is never recorded.", s.saveTranscripts) { on ->
+                    update { it.copy(saveTranscripts = on) }
+                }
+                Text("During a call, your speech is sent to our server and to Gnani (speech recognition and voice) and MyMemory (translation) to be translated. Calls are never recorded.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                Spacer(Modifier.height(12.dp))
+                AppCard(Modifier.clickable(role = Role.Button, onClick = onPrivacyPolicy)) {
+                    Text("Privacy policy")
+                    Text("What is stored, where, and for how long", color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            "language" -> {
         SectionTitle("Language and voice")
         AppCard(Modifier.clickable(role = Role.Button, onClick = onLanguages)) {
             Text("${c.language(s.myLanguage)?.name ?: s.myLanguage} · voice ${s.voice ?: "default"} · ${"%.2f".format(s.speed)}×")
             Text("Change languages, voice and speed", color = MaterialTheme.colorScheme.primary)
         }
-        SectionTitle("Subtitles")
-        Text("Text size ${"%.0f".format(s.subtitleScale * 100)}%")
-        Slider(value = s.subtitleScale, onValueChange = { v -> update { it.copy(subtitleScale = v) } }, valueRange = 0.8f..1.8f)
-        SectionTitle("Theme")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ThemeMode.entries.forEach { m -> FilterChip(selected = s.theme == m, onClick = { update { it.copy(theme = m) } }, label = { Text(m.name) }) }
-        }
+            }
+            "calls" -> {
         SectionTitle("Audio")
         SettingSwitch("Hear translated speech", "Off = subtitles only. You still hear the other person's own voice.", s.translatedAudio) { on -> update { it.copy(translatedAudio = on) } }
         SettingSwitch("Start calls on speaker", "Otherwise the phone earpiece is used.", s.speakerOn) { on -> update { it.copy(speakerOn = on) } }
@@ -231,14 +289,77 @@ fun SettingsScreen(onBack: () -> Unit, onLanguages: () -> Unit, onHelp: () -> Un
         Slider(value = s.originalVolume, onValueChange = { v -> update { it.copy(originalVolume = v) } }, valueRange = 0f..1f)
         Text("Kept quieter under the translation so both are understandable.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        SectionTitle("Privacy")
-        SettingSwitch("Save transcripts on this phone", "Off by default. Saved only on this device, never on our server. Audio is never recorded.", s.saveTranscripts) { on ->
-            update { it.copy(saveTranscripts = on) }
+        SectionTitle("Subtitles")
+        Text("Text size ${"%.0f".format(s.subtitleScale * 100)}%")
+        Slider(value = s.subtitleScale, onValueChange = { v -> update { it.copy(subtitleScale = v) } }, valueRange = 0.8f..1.8f)
+            }
+            "chats" -> {
+        SectionTitle("Chats")
+        AppCard {
+            SettingSwitch("Read receipts", "Others see when you've read their messages. Off: you don't see theirs either.",
+                user?.readReceipts ?: true) { on ->
+                scope.launch { runCatching { c.api.updateMe(readReceipts = on) }.onSuccess { c.user.value = it } }
+            }
+            Text("Keep chat history for", style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(7 to "7 days", 30 to "30 days", 365 to "1 year").forEach { (days, label) ->
+                    FilterChip(selected = (user?.chatRetentionDays ?: 30) == days, onClick = {
+                        scope.launch { runCatching { c.api.updateMe(chatRetentionDays = days) }.onSuccess { c.user.value = it } }
+                    }, label = { Text(label) })
+                }
+            }
+            Text("Applies to new messages. A chat keeps messages for the shortest time any of its members chose; " +
+                "then they're deleted from the server.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        SecondaryButton("Delete saved transcripts ($savedCount)", { confirmDelete = true }, Modifier.fillMaxWidth(), enabled = savedCount > 0)
-        Text("During a call, your speech is sent to our server and to Gnani (speech recognition and voice) and MyMemory (translation) to be translated. Nothing is stored by Sarvagyan.",
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
 
+            }
+            "notifications" -> {
+                SectionTitle("Notifications")
+                val granted = android.os.Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                AppCard {
+                    Text(if (granted) "Notifications are allowed" else "Notifications are off",
+                        style = MaterialTheme.typography.titleMedium)
+                    Text("Sarvagyan uses them to ring for incoming calls and to show that the microphone is on during a call.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    SecondaryButton("Open notification settings", {
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+                    }, Modifier.fillMaxWidth())
+                }
+            }
+            "storage" -> {
+                SectionTitle("On this phone")
+                AppCard {
+                    Text("Saved call transcripts: $savedCount", style = MaterialTheme.typography.titleMedium)
+                    Text("Encrypted, and only on this phone.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    SecondaryButton("Delete saved transcripts", { confirmDelete = true }, Modifier.fillMaxWidth(), enabled = savedCount > 0)
+                }
+                SectionTitle("On our server")
+                Text("Chat messages and voice messages are kept for the time chosen in Settings → Chats, voicemail text for at most 7 days. " +
+                    "Deleting your account (Settings → Account) removes everything at once.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            "appearance" -> {
+        SectionTitle("Theme")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ThemeMode.entries.forEach { m -> FilterChip(selected = s.theme == m, onClick = { update { it.copy(theme = m) } }, label = { Text(m.name) }) }
+        }
+            }
+            "help" -> {
+                AppCard(Modifier.clickable(role = Role.Button, onClick = onHelp)) {
+                    Text("Sarvagyan ${BuildConfig.VERSION_NAME}")
+                    Text("How it works, tips and troubleshooting", color = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.height(12.dp))
+                AppCard(Modifier.clickable(role = Role.Button, onClick = onPrivacyPolicy)) {
+                    Text("Privacy policy")
+                    Text("What is stored, where, and for how long", color = MaterialTheme.colorScheme.primary)
+                }
         SectionTitle("Connection and diagnostics")
         OutlinedTextField(serverDraft, { serverDraft = it.trim() }, label = { Text("Server URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
@@ -258,13 +379,8 @@ fun SettingsScreen(onBack: () -> Unit, onLanguages: () -> Unit, onHelp: () -> Un
         diagError?.let { Spacer(Modifier.height(8.dp)); ErrorBanner(it) }
         diag?.let { d -> Spacer(Modifier.height(8.dp)); DiagnosticsCard(d) }
 
-        SectionTitle("About and help")
-        AppCard(Modifier.clickable(role = Role.Button, onClick = onHelp)) {
-            Text("Sarvagyan ${BuildConfig.VERSION_NAME}")
-            Text("How it works, privacy and troubleshooting", color = MaterialTheme.colorScheme.primary)
+            }
         }
-        Spacer(Modifier.height(16.dp))
-        SecondaryButton("Sign out", { c.activeCall.value?.end(); c.signOut(); onSignedOut() }, Modifier.fillMaxWidth())
         Spacer(Modifier.height(24.dp))
     }
 
@@ -317,6 +433,165 @@ fun HelpScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(24.dp))
         Text("Sarvagyan ${BuildConfig.VERSION_NAME} · Speech: Gnani Prisma & Timbre · Translation: MyMemory",
             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Every phone signed in to this account, with sign-out for one or all others (lost or old phones). */
+@Composable
+private fun DevicesCard() {
+    val c = LocalContext.current.container
+    val scope = rememberCoroutineScope()
+    var devices by remember { mutableStateOf<List<ai.mack.sarvagyan.data.DeviceSession>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    suspend fun load() {
+        try { devices = c.api.devices().sessions; error = null } catch (e: ApiException) { error = e.message }
+    }
+    LaunchedEffect(Unit) { load() }
+
+    SectionTitle("Signed-in devices")
+    AppCard {
+        val list = devices
+        when {
+            list == null && error == null -> Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            list != null -> list.forEach { d ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(d.device + if (d.current) " (this phone)" else "", style = MaterialTheme.typography.titleSmall)
+                        Text("Last active " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                            .format(java.util.Date((d.lastUsedAt * 1000).toLong())),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (!d.current) TextButton(onClick = { scope.launch {
+                        try { c.api.signOutDevice(d.id) } catch (e: ApiException) { error = e.message }
+                        load()
+                    } }) { Text("Sign out") }
+                }
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        if ((devices?.size ?: 0) > 1) {
+            Spacer(Modifier.height(8.dp))
+            SecondaryButton("Sign out all other devices", { scope.launch {
+                try { c.api.signOutOtherDevices() } catch (e: ApiException) { error = e.message }
+                load()
+            } }, Modifier.fillMaxWidth())
+        }
+        Text("Lost a phone? Sign it out here. Its access ends straight away.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** The nine Settings groups shown on the hub, in order. */
+data class SettingsGroup(val id: String, val title: String, val summary: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+
+val settingsGroups = listOf(
+    SettingsGroup("account", "Account", "Profile, @username, devices, delete account", Icons.Filled.Person),
+    SettingsGroup("privacy", "Privacy and security", "App lock, screenshots, transcripts, privacy policy", Icons.Filled.Lock),
+    SettingsGroup("language", "Language and voice", "Your language, voice and speed", Icons.Filled.Translate),
+    SettingsGroup("calls", "Calls", "Translated voice, speaker, subtitles", Icons.Filled.Call),
+    SettingsGroup("chats", "Chats", "Read receipts, chat history", Icons.AutoMirrored.Filled.Chat),
+    SettingsGroup("notifications", "Notifications", "Incoming calls and call alerts", Icons.Filled.Notifications),
+    SettingsGroup("storage", "Storage and data", "What is kept on this phone and on our server", Icons.Filled.Storage),
+    SettingsGroup("appearance", "Appearance", "Dark, light or system theme", Icons.Filled.Palette),
+    SettingsGroup("help", "Help and about", "How it works, privacy policy, diagnostics", Icons.AutoMirrored.Filled.Help),
+)
+
+@Composable
+private fun SettingsHub(name: String?, username: String?, onOpen: (String) -> Unit) {
+    AppCard(Modifier.clickable(role = Role.Button, onClick = { onOpen("account") })) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ai.mack.sarvagyan.ui.components.Avatar(name ?: "?", LocalCallColors.current.me)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(name ?: "Your account", style = MaterialTheme.typography.titleMedium)
+                Text(username?.let { "@$it" } ?: "Set a username so people can find you",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+    Spacer(Modifier.height(12.dp))
+    settingsGroups.drop(1).forEach { g ->
+        Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpen(g.id) }.padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(g.icon, null, tint = Brand.HighlightAccent)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(g.title, style = MaterialTheme.typography.titleMedium)
+                Text(g.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        HorizontalDivider(color = Brand.Borders)
+    }
+}
+
+/** Deletes the account and all its server data, after typing DELETE (and the password, for email accounts). */
+@Composable
+private fun DeleteAccountCard(onDeleted: () -> Unit) {
+    val c = LocalContext.current.container
+    val scope = rememberCoroutineScope()
+    val user by c.user.collectAsStateWithLifecycle()
+    var open by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val needsPassword = user?.email != null
+
+    SectionTitle("Delete account")
+    AppCard {
+        Text("Deletes your account and everything our server holds about you: profile, devices, contacts, call history, " +
+            "voicemail, and your chat and voice messages. It cannot be undone.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = { open = true }) { Text("Delete my account", color = MaterialTheme.colorScheme.error) }
+    }
+    if (open) AlertDialog(
+        onDismissRequest = { if (!busy) open = false },
+        title = { Text("Delete your account?") },
+        text = {
+            Column {
+                Text("This cannot be undone. Type DELETE to confirm.")
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(confirm, { confirm = it.trim() }, singleLine = true, label = { Text("Type DELETE") })
+                if (needsPassword) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(password, { password = it }, singleLine = true, label = { Text("Your password") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                }
+                error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = confirm == "DELETE" && (!needsPassword || password.isNotEmpty()) && !busy, onClick = {
+                busy = true
+                error = null
+                scope.launch {
+                    try {
+                        c.api.deleteAccount(password.takeIf { needsPassword })
+                        c.activeCall.value?.end(notifyServer = false)
+                        c.transcripts.deleteAll()
+                        c.forgetAccount()
+                        open = false
+                        onDeleted()
+                    } catch (e: ApiException) {
+                        error = e.message
+                    } finally { busy = false }
+                }
+            }) { Text("Delete for ever", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = { open = false }, enabled = !busy) { Text("Cancel") } },
+    )
+}
+
+@Composable
+fun PrivacyPolicyScreen(onBack: () -> Unit) {
+    ScreenScaffold("Privacy policy", onBack) {
+        PrivacyPolicy.sections.forEach { (title, body) ->
+            SectionTitle(title)
+            Text(body, style = MaterialTheme.typography.bodyLarge)
+        }
         Spacer(Modifier.height(24.dp))
     }
 }

@@ -2,7 +2,13 @@ package ai.mack.sarvagyan
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.os.SystemClock
+import android.view.WindowManager
+import androidx.fragment.app.FragmentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import ai.mack.sarvagyan.ui.screens.LockScreen
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
@@ -23,14 +29,18 @@ import ai.mack.sarvagyan.ui.theme.SarvagyanTheme
 import ai.mack.sarvagyan.ui.theme.ThemeMode
 import android.graphics.Color as AndroidColor
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() { // FragmentActivity: needed by the fingerprint / PIN prompt
     private val pendingJoin = mutableStateOf<String?>(null)
+    private val locked = mutableStateOf(false)
+    private var leftAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleIntent(intent)
+        // app lock: locked from the start when turned on
+        lifecycleScope.launch { if (container.settingsStore.current().appLock) locked.value = true }
         setContent {
             val settings by container.settings.collectAsStateWithLifecycle()
             val dark = when (settings.theme) {
@@ -44,12 +54,35 @@ class MainActivity : ComponentActivity() {
                 else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
+            LaunchedEffect(settings.blockScreenshots) {
+                if (settings.blockScreenshots) window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+            LaunchedEffect(locked.value) { if (locked.value) unlock() }
             SarvagyanTheme(mode = settings.theme) {
                 // Surface provides the theme's content colour, so every Text defaults to readable colours
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    AppNav(rememberNavController(), pendingJoin.value, onJoinCodeConsumed = { pendingJoin.value = null })
+                    Box(Modifier.fillMaxSize()) {
+                        AppNav(rememberNavController(), pendingJoin.value, onJoinCodeConsumed = { pendingJoin.value = null })
+                        if (locked.value) LockScreen(onUnlock = { unlock() })
+                    }
                 }
             }
+        }
+    }
+
+    private fun unlock() = AppLock.prompt(this) { locked.value = false }
+
+    override fun onStop() {
+        super.onStop()
+        leftAt = SystemClock.elapsedRealtime()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // back after more than 30 seconds away: lock again
+        if (leftAt > 0 && SystemClock.elapsedRealtime() - leftAt > AppLock.RELOCK_AFTER_MS && container.settings.value.appLock) {
+            locked.value = true
         }
     }
 

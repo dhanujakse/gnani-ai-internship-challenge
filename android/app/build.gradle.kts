@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -7,6 +9,14 @@ plugins {
 // Backend address. Default set to your PC's Wi-Fi network address so physical phones connect directly.
 // Override without editing code:  ./gradlew assembleDebug -PserverUrl=https://your-server.example
 val serverUrl: String = (project.findProperty("serverUrl") as String?) ?: "http://10.0.2.2:8787"
+// shown in the in-app privacy policy:  -PprivacyContact=privacy@your-domain
+val privacyContact: String = (project.findProperty("privacyContact") as String?) ?: ""
+
+// Release signing: android/keystore.properties (git-ignored) with storeFile, storePassword, keyAlias, keyPassword.
+// See docs/PLAY_STORE.md. Without it, release builds fall back to the debug key (fine for testing, rejected by Play).
+val keystore = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
 
 android {
     namespace = "ai.mack.sarvagyan"
@@ -20,8 +30,18 @@ android {
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$serverUrl\"")
+        buildConfigField("String", "PRIVACY_CONTACT", "\"$privacyContact\"")
         // phones (arm64, older 32-bit arm) and x86_64 emulators; drops unused WebRTC binaries
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+    }
+
+    signingConfigs {
+        if (!keystore.isEmpty) create("upload") {
+            storeFile = file(keystore.getProperty("storeFile"))
+            storePassword = keystore.getProperty("storePassword")
+            keyAlias = keystore.getProperty("keyAlias")
+            keyPassword = keystore.getProperty("keyPassword")
+        }
     }
 
     buildTypes {
@@ -33,8 +53,9 @@ android {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             resValue("string", "app_name", "Sarvagyan")
-            buildConfigField("String", "DEFAULT_SERVER_URL", "\"$serverUrl\"")
-            signingConfig = signingConfigs.getByName("debug") // replace with a real keystore before publishing
+            // release builds must talk to an https/wss server (cleartext is blocked in release anyway)
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"${if (serverUrl.startsWith("https://")) serverUrl else "https://sarvagyan.example"}\"")
+            signingConfig = signingConfigs.getByName(if (keystore.isEmpty) "debug" else "upload")
         }
     }
 
@@ -67,6 +88,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.biometric)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)

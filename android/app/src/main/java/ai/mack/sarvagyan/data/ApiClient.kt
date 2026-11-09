@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import android.os.Build
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -36,7 +37,11 @@ class ApiClient(
     private val json: Json,
     private val baseUrl: () -> String,
     private val token: () -> String?,
+    /** Gets a new access token after a 401; given the token that failed. True when a new one was saved. */
+    private val refresh: suspend (stale: String?) -> Boolean = { false },
 ) {
+    private val deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(60)
+
     private val jsonType = "application/json".toMediaType()
 
     private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
@@ -67,9 +72,17 @@ class ApiClient(
         throw ApiException(0, "Can't reach the Sarvagyan server. Check your connection.")
     }
 
-    private suspend fun <T> send(method: String, url: String, body: RequestBody?, serializer: KSerializer<T>): T =
-        withContext(Dispatchers.IO) {
+    private suspend fun <T> send(
+        method: String, url: String, body: RequestBody?, serializer: KSerializer<T>, retried: Boolean = false,
+    ): T = withContext(Dispatchers.IO) {
+            val used = token()
             val response = open(authorised(url).method(method, body).build())
+            // access tokens last 15 minutes: on 401, get a new one with the refresh token and try once more
+            if (response.code == 401 && !retried && used != null && "/v1/auth/" !in url) {
+                response.close()
+                if (refresh(used)) return@withContext send(method, url, body, serializer, retried = true)
+                throw ApiException(401, "Please sign in again.")
+            }
             response.use { r ->
                 val text = r.body.string()
                 if (!r.isSuccessful) throw ApiException(r.code, errorMessage(r.code, text))
@@ -110,20 +123,63 @@ class ApiClient(
 
     suspend fun health(): Health = request("GET", "/health", null, Health.serializer())
     suspend fun register(email: String, password: String, name: String, username: String? = null): Session =
-        request("POST", "/v1/auth/register", obj("email" to email, "password" to password, "display_name" to name, "username" to username), Session.serializer())
+        request("POST", "/v1/auth/register", obj("email" to email, "password" to password, "display_name" to name, "username" to username, "device" to deviceName), Session.serializer())
     suspend fun login(email: String, password: String): Session =
-        request("POST", "/v1/auth/login", obj("email" to email, "password" to password), Session.serializer())
+        request("POST", "/v1/auth/login", obj("email" to email, "password" to password, "device" to deviceName), Session.serializer())
     suspend fun demo(name: String, username: String? = null): Session =
-        request("POST", "/v1/auth/demo", obj("display_name" to name, "username" to username), Session.serializer())
+        request("POST", "/v1/auth/demo", obj("display_name" to name, "username" to username, "device" to deviceName), Session.serializer())
+    suspend fun refreshTokens(refreshToken: String): Session =
+        request("POST", "/v1/auth/refresh", obj("refresh_token" to refreshToken), Session.serializer())
+
+    /** Ends this phone's session on the server; takes the token explicitly because it is cleared locally at once. */
+    suspend fun logout(accessToken: String) {
+        withContext(Dispatchers.IO) {
+            val req = Request.Builder().url(baseUrl().trimEnd('/') + "/v1/auth/logout")
+                .header("Authorization", "Bearer $accessToken").post("{}".toRequestBody(jsonType)).build()
+            open(req).close()
+        }
+    }
+    suspend fun devices(): DeviceSessionsResponse = request("GET", "/v1/me/sessions", null, DeviceSessionsResponse.serializer())
+    suspend fun signOutDevice(id: String) {
+        request("DELETE", "/v1/me/sessions/$id", null, JsonObject.serializer())
+    }
+    /** Deletes the account and all its server data. Email accounts must give their password. */
+    suspend fun deleteAccount(password: String?) {
+        request("DELETE", "/v1/me", obj("confirm" to "DELETE", "password" to password), JsonObject.serializer())
+    }
+    suspend fun signOutOtherDevices(): Int =
+        request("POST", "/v1/me/sessions/revoke-others", null, JsonObject.serializer()).int("ended") ?: 0
+
+    /** A token good for at least another minute (refreshed if needed), for opening sockets and streams. */
+    suspend fun freshToken(): String? {
+        val t = token() ?: return null
+        if (expiresWithin(t, 60)) refresh(t)
+        return token()
+    }
+
+    private fun expiresWithin(token: String, seconds: Long): Boolean = runCatching {
+        val payload = token.split(".")[1]
+        val claims = json.parseToJsonElement(String(java.util.Base64.getUrlDecoder().decode(payload))).jsonObject
+        val exp = claims.int("exp")?.toLong() ?: return true
+        exp - System.currentTimeMillis() / 1000 < seconds
+    }.getOrDefault(true)
     suspend fun me(): User = request("GET", "/v1/me", null, User.serializer())
-    suspend fun updateMe(name: String? = null, language: String? = null, username: String? = null): User =
-        request("PATCH", "/v1/me", obj("display_name" to name, "language" to language, "username" to username), User.serializer())
+    suspend fun updateMe(
+        name: String? = null, language: String? = null, username: String? = null, allowCalls: String? = null,
+        readReceipts: Boolean? = null, chatRetentionDays: Int? = null,
+    ): User = request("PATCH", "/v1/me", obj("display_name" to name, "language" to language, "username" to username,
+        "allow_calls" to allowCalls, "read_receipts" to readReceipts, "chat_retention_days" to chatRetentionDays), User.serializer())
+
+    /** Delete a chat message for me (hidden on my phones) or for everyone (sender only). */
+    suspend fun deleteChatMessage(id: String, forEveryone: Boolean) {
+        request("DELETE", "/v1/chat/messages/$id?scope=${if (forEveryone) "everyone" else "me"}", null, JsonObject.serializer())
+    }
 
     suspend fun checkUsername(username: String): CheckUsernameResponse =
         request("GET", "/v1/users/check-username?username=$username", null, CheckUsernameResponse.serializer())
 
     suspend fun searchUsers(query: String): SearchUsersResponse =
-        request("GET", "/v1/users/search?q=$query", null, SearchUsersResponse.serializer())
+        request("GET", "/v1/users/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}", null, SearchUsersResponse.serializer())
     suspend fun languages(): LanguagesResponse = request("GET", "/v1/languages", null, LanguagesResponse.serializer())
     suspend fun createCall(language: String): CallInfo = request("POST", "/v1/calls", obj("language" to language), CallInfo.serializer())
     suspend fun joinCall(code: String, language: String): CallInfo =
@@ -150,7 +206,9 @@ class ApiClient(
     }
 
     /** Streams the translated voice (16 kHz mono PCM), generated by the server when asked. */
-    suspend fun streamVoicemailAudio(id: String, onChunk: (ByteArray, Int) -> Unit) = withContext(Dispatchers.IO) {
+    suspend fun streamVoicemailAudio(id: String, onChunk: (ByteArray, Int) -> Unit) = freshToken().let { streamVoicemailAudioNow(id, onChunk) }
+
+    private suspend fun streamVoicemailAudioNow(id: String, onChunk: (ByteArray, Int) -> Unit) = withContext(Dispatchers.IO) {
         val call = http.newCall(authorised(baseUrl().trimEnd('/') + "/v1/voicemails/$id/audio").get().build())
         currentCoroutineContext().job.invokeOnCompletion { call.cancel() } // stops a blocking read on cancel
         val response = try {
@@ -207,7 +265,9 @@ class ApiClient(
         return send("POST", url, pcm.toRequestBody("application/octet-stream".toMediaType()), SendMessageResponse.serializer())
     }
 
-    suspend fun streamChatAudio(audioId: String, onChunk: (ByteArray, Int) -> Unit) = withContext(Dispatchers.IO) {
+    suspend fun streamChatAudio(audioId: String, onChunk: (ByteArray, Int) -> Unit) = freshToken().let { streamChatAudioNow(audioId, onChunk) }
+
+    private suspend fun streamChatAudioNow(audioId: String, onChunk: (ByteArray, Int) -> Unit) = withContext(Dispatchers.IO) {
         val call = http.newCall(authorised(baseUrl().trimEnd('/') + "/v1/chat/audio/$audioId").get().build())
         currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
         val response = try {
@@ -227,6 +287,31 @@ class ApiClient(
             }
         }
     }
+
+    // contacts, blocking, direct (ringing) calls
+    suspend fun contacts(): ContactUsersResponse = request("GET", "/v1/contacts", null, ContactUsersResponse.serializer())
+    suspend fun addContact(username: String) {
+        request("POST", "/v1/contacts", obj("username" to username), JsonObject.serializer())
+    }
+    suspend fun removeContact(id: String) {
+        request("DELETE", "/v1/contacts/$id", null, JsonObject.serializer())
+    }
+    suspend fun blockedContacts(): ContactUsersResponse = request("GET", "/v1/contacts/blocked", null, ContactUsersResponse.serializer())
+    suspend fun block(id: String) {
+        request("PUT", "/v1/contacts/blocked/$id", null, JsonObject.serializer())
+    }
+    suspend fun unblock(id: String) {
+        request("DELETE", "/v1/contacts/blocked/$id", null, JsonObject.serializer())
+    }
+    suspend fun callPerson(id: String, language: String): CallInfo =
+        request("POST", "/v1/calls/direct", obj("to" to id, "language" to language), CallInfo.serializer())
+    suspend fun answerCall(callId: String, language: String): CallInfo =
+        request("POST", "/v1/calls/$callId/answer", obj("language" to language), CallInfo.serializer())
+    suspend fun declineCall(callId: String) {
+        request("POST", "/v1/calls/$callId/decline", null, JsonObject.serializer())
+    }
+
+    fun appSocketUrl(): String = chatWebSocketUrl()
 
     fun chatWebSocketUrl(): String =
         baseUrl().trimEnd('/').replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/v1/chat/ws"

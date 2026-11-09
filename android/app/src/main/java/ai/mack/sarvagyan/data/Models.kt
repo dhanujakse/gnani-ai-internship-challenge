@@ -12,10 +12,31 @@ data class User(
     val email: String? = null,
     @SerialName("is_demo") val isDemo: Boolean = false,
     val language: String = "ta-IN",
+    @SerialName("allow_calls") val allowCalls: String = "contacts", // who can call me: contacts | everyone
+    @SerialName("read_receipts") val readReceipts: Boolean = true,
+    @SerialName("chat_retention_days") val chatRetentionDays: Int = 30,
 )
 
 @Serializable
-data class Session(val token: String, val user: User)
+data class Session(
+    val token: String,
+    val user: User,
+    @SerialName("refresh_token") val refreshToken: String = "",
+    @SerialName("expires_in") val expiresIn: Int = 900,
+)
+
+/** A phone or other device that is signed in to this account. */
+@Serializable
+data class DeviceSession(
+    val id: String,
+    val device: String,
+    @SerialName("created_at") val createdAt: Double,
+    @SerialName("last_used_at") val lastUsedAt: Double,
+    val current: Boolean = false,
+)
+
+@Serializable
+data class DeviceSessionsResponse(val sessions: List<DeviceSession>)
 
 @Serializable
 data class Language(
@@ -39,6 +60,10 @@ data class CallInfo(
     @SerialName("invite_link") val inviteLink: String,
     @SerialName("app_link") val appLink: String,
     val participants: Int = 1,
+    val ringing: Boolean = false, // a direct call to a person (rings their phone), not an invite-code call
+    val reachable: Boolean = true, // false: their app is not connected right now
+    @SerialName("peer_id") val peerId: String? = null,
+    @SerialName("peer_name") val peerName: String? = null,
 )
 
 @Serializable
@@ -161,6 +186,8 @@ data class ChatMessage(
     @SerialName("audio_url") val audioUrl: String? = null,
     @SerialName("duration_ms") val durationMs: Long = 0,
     @SerialName("created_at") val createdAt: Double = 0.0,
+    val status: String? = null, // my messages only: sent | delivered | read
+    val deleted: Boolean = false, // deleted for everyone by the sender
 )
 
 @Serializable
@@ -190,3 +217,15 @@ data class ChatMessagesResponse(val messages: List<ChatMessage>)
 
 @Serializable
 data class SendMessageResponse(val message: ChatMessage)
+
+@Serializable
+data class ContactUser(
+    val id: String,
+    val name: String,
+    val username: String? = null,
+    val language: String = "ta-IN",
+    @SerialName("is_demo") val isDemo: Boolean = false,
+)
+
+@Serializable
+data class ContactUsersResponse(val contacts: List<ContactUser>)

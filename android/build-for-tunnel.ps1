@@ -1,14 +1,17 @@
 # Builds the debug APK pointed at the cloudflared quick tunnel that is running on this PC right now.
 # Usage (from anywhere):  powershell -ExecutionPolicy Bypass -File D:\inten_hackthon\android\build-for-tunnel.ps1
 # Start the server and cloudflared first.
+# With a fixed address (e.g. Tailscale Funnel):  ...uild-for-tunnel.ps1 -Url https://my-pc.tailXXXX.ts.net
+param([string]$Url)
 
 $hostname = $null
-foreach ($port in 20241..20245) {
+if ($Url) { $hostname = ($Url -replace '^https?://', '').TrimEnd('/') }
+if (-not $hostname) { foreach ($port in 20241..20245) {
     try {
         $r = Invoke-RestMethod -Uri "http://127.0.0.1:$port/quicktunnel" -TimeoutSec 2
         if ($r.hostname) { $hostname = $r.hostname; break }
     } catch {}
-}
+} }
 if (-not $hostname) {
     Write-Host "No cloudflared tunnel found. Start it first:  D:\tools\cloudflared.exe tunnel --url http://localhost:8787" -ForegroundColor Red
     exit 1

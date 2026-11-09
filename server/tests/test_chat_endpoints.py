@@ -71,3 +71,20 @@ async def test_user_search_and_chat_flow(chat_app):
     # List conversations
     list_res = routes["/v1/chat/conversations"](user=u1, s=svc)
     assert len(list_res["conversations"]) == 2
+
+
+def test_chat_voice_audio_needs_sign_in_and_membership(env) -> None:
+    ta, a = env.guest("A")
+    tb, b = env.guest("B")
+    tc, _ = env.guest("Outsider")
+    conv = env.client.post("/v1/chat/direct", json={"user_id": b["id"]}, headers=env.auth(ta)).json()["conversation"]
+    audio_id = "ab" * 16
+    (env.services.chat_audio_dir / f"{audio_id}.pcm").write_bytes(b"\x01\x00" * 100)
+    env.services.db.insert_message(conv["id"], a["id"], "A", "ta-IN", "voice", audio_id=audio_id, duration_ms=10)
+    url = f"/v1/chat/audio/{audio_id}"
+    assert env.client.get(url).status_code == 401  # not signed in
+    assert env.client.get(url, headers=env.auth(tc)).status_code == 404  # not in the conversation
+    assert env.client.get("/v1/chat/audio/nothex", headers=env.auth(ta)).status_code == 404
+    for token in (ta, tb):
+        r = env.client.get(url, headers=env.auth(token))
+        assert r.status_code == 200 and r.content == b"\x01\x00" * 100
