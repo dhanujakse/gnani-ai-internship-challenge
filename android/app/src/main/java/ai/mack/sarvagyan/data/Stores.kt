@@ -31,7 +31,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 data class AppSettings(
     val onboarded: Boolean = false,
     val serverUrl: String = BuildConfig.DEFAULT_SERVER_URL,
-    val myLanguage: String = "ta-IN",
+    val myLanguage: String = "en-IN",
     val partnerLanguage: String = "en-IN",
     val autoDetect: Boolean = false,
     val voice: String? = null, // voice used for translations YOU hear (in your language)
@@ -45,6 +45,7 @@ data class AppSettings(
     val privacyAcknowledged: Boolean = false,
     val appLock: Boolean = false, // fingerprint / face / phone PIN to open the app
     val blockScreenshots: Boolean = false,
+    val noiseReduction: Boolean = true,
 )
 
 class SettingsStore(private val context: Context) {
@@ -65,6 +66,7 @@ class SettingsStore(private val context: Context) {
         val privacy = booleanPreferencesKey("privacy_ack")
         val appLock = booleanPreferencesKey("app_lock")
         val noShots = booleanPreferencesKey("block_screenshots")
+        val noiseReduction = booleanPreferencesKey("noise_reduction")
         val langCache = stringPreferencesKey("languages_cache")
     }
 
@@ -72,7 +74,7 @@ class SettingsStore(private val context: Context) {
         AppSettings(
             onboarded = p[K.onboarded] ?: false,
             serverUrl = p[K.server] ?: BuildConfig.DEFAULT_SERVER_URL,
-            myLanguage = p[K.myLang] ?: "ta-IN",
+            myLanguage = p[K.myLang] ?: "en-IN",
             partnerLanguage = p[K.partnerLang] ?: "en-IN",
             autoDetect = p[K.auto] ?: false,
             voice = p[K.voice],
@@ -86,6 +88,7 @@ class SettingsStore(private val context: Context) {
             privacyAcknowledged = p[K.privacy] ?: false,
             appLock = p[K.appLock] ?: false,
             blockScreenshots = p[K.noShots] ?: false,
+            noiseReduction = p[K.noiseReduction] ?: true,
         )
     }
 
@@ -110,6 +113,7 @@ class SettingsStore(private val context: Context) {
             p[K.privacy] = next.privacyAcknowledged
             p[K.appLock] = next.appLock
             p[K.noShots] = next.blockScreenshots
+            p[K.noiseReduction] = next.noiseReduction
         }
     }
 

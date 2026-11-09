@@ -20,6 +20,7 @@ server/data/
 .gradle/
 build/
 *.apk
+*.mp4
 *.png
 !android/app/src/main/res/**/*.png
 android/app/release/

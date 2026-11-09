@@ -6,6 +6,9 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -63,7 +66,15 @@ object VoicemailRecorder {
             } catch (e: Exception) {
                 null
             }
-            if (rec?.state == AudioRecord.STATE_INITIALIZED) return rec to rate
+            if (rec?.state == AudioRecord.STATE_INITIALIZED) {
+                runCatching {
+                    val sId = rec.audioSessionId
+                    if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(sId)?.enabled = true
+                    if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(sId)?.enabled = true
+                    if (AutomaticGainControl.isAvailable()) AutomaticGainControl.create(sId)?.enabled = true
+                }
+                return rec to rate
+            }
             rec?.release()
         }
         return null

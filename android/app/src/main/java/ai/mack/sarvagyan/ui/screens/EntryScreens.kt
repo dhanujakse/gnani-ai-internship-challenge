@@ -34,6 +34,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedCard
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ai.mack.sarvagyan.data.Language
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -176,9 +182,55 @@ fun OnboardingScreen(onFinish: () -> Unit) {
 }
 
 @Composable
+private fun LanguagePickerField(
+    title: String = "Which language do you speak?",
+    languages: List<Language>,
+    selectedCode: String?,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedLang = languages.firstOrNull { it.code == selectedCode }
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(4.dp))
+        OutlinedCard(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Language, null, tint = if (selectedCode != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = if (selectedLang != null) "${selectedLang.native} · ${selectedLang.name}" else "Select your language…",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (selectedCode != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(Icons.Filled.ArrowDropDown, null)
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            languages.forEach { l ->
+                DropdownMenuItem(
+                    text = { Text("${l.native} · ${l.name}") },
+                    onClick = {
+                        onSelect(l.code)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun AuthScreen(onSignedIn: () -> Unit) {
     val c = LocalContext.current.container
     val scope = rememberCoroutineScope()
+    val supportedLanguages by c.languages.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) } // 0 sign in, 1 create account
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -187,7 +239,9 @@ fun AuthScreen(onSignedIn: () -> Unit) {
     var usernameStatus by remember { mutableStateOf<String?>(null) }
     var usernameAvailable by remember { mutableStateOf(false) }
     var checkingUsername by remember { mutableStateOf(false) }
+    var accountLanguage by remember { mutableStateOf<String?>(null) }
     var guestName by remember { mutableStateOf("") }
+    var guestLanguage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showServer by remember { mutableStateOf(false) }
@@ -280,6 +334,13 @@ fun AuthScreen(onSignedIn: () -> Unit) {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
+            LanguagePickerField(
+                title = "Which language do you speak?",
+                languages = supportedLanguages,
+                selectedCode = accountLanguage,
+                onSelect = { accountLanguage = it }
+            )
+            Spacer(Modifier.height(8.dp))
         }
         OutlinedTextField(email, { email = it.trim() }, label = { Text("Email") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
@@ -292,7 +353,7 @@ fun AuthScreen(onSignedIn: () -> Unit) {
         val canSubmit = if (tab == 0) {
             email.contains('@') && password.length >= 1
         } else {
-            email.contains('@') && password.length >= 8 && name.isNotBlank() && usernameAvailable && !checkingUsername
+            email.contains('@') && password.length >= 8 && name.isNotBlank() && usernameAvailable && !checkingUsername && accountLanguage != null
         }
         PrimaryButton(
             if (tab == 0) "Sign in" else "Create account",
@@ -301,7 +362,12 @@ fun AuthScreen(onSignedIn: () -> Unit) {
                     run { c.api.login(email, password) }
                 } else {
                     val cleanUsername = username.trim().removePrefix("@")
-                    run { c.api.register(email, password, name.ifBlank { email.substringBefore('@') }, cleanUsername) }
+                    val chosen = accountLanguage!!
+                    run {
+                        val sess = c.api.register(email, password, name.ifBlank { email.substringBefore('@') }, cleanUsername, language = chosen)
+                        c.settingsStore.update { it.copy(myLanguage = chosen) }
+                        sess
+                    }
                 }
             },
             enabled = canSubmit,
@@ -314,7 +380,21 @@ fun AuthScreen(onSignedIn: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(guestName, { guestName = it }, label = { Text("Name shown to the other person") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
-        SecondaryButton("Continue as guest (demo)", { run { c.api.demo(guestName.ifBlank { "Guest" }) } }, Modifier.fillMaxWidth(), enabled = !busy)
+        LanguagePickerField(
+            title = "Which language do you speak?",
+            languages = supportedLanguages,
+            selectedCode = guestLanguage,
+            onSelect = { guestLanguage = it }
+        )
+        Spacer(Modifier.height(8.dp))
+        SecondaryButton("Continue as guest (demo)", {
+            val chosen = guestLanguage!!
+            run {
+                val sess = c.api.demo(guestName.ifBlank { "Guest" }, language = chosen)
+                c.settingsStore.update { it.copy(myLanguage = chosen) }
+                sess
+            }
+        }, Modifier.fillMaxWidth(), enabled = !busy && guestLanguage != null)
         Spacer(Modifier.height(20.dp))
         TextButton(onClick = { showServer = !showServer }) { Text(if (showServer) "Hide server settings" else "Server settings") }
         if (showServer) {

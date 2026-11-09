@@ -45,31 +45,44 @@ def in_script(text: str, lang: str) -> bool:
     return sum(lo <= ord(c) <= hi for c in letters) >= 0.6 * len(letters)
 
 
+_TROLL_PATTERNS = ("ஐ லவ் யூ", "i love you", "டார்லிங்", "darling")
+
+
 def plausible_length(source: str, candidate: str) -> bool:
     """Reject answers far longer or shorter than the input (a typical sign of an unrelated memory entry)."""
     s, c = len(source.strip()), len(candidate.strip())
+    if s <= 5 and c > 12:
+        return False
     return c <= 4 * s + 12 and c * 5 + 6 >= s
 
 
 def choose_translation(source: str, target_lang: str, body: dict) -> str:
     """Pick the most trustworthy candidate from a MyMemory response.
 
-    Order: a valid machine translation, then the main answer, then other matches by match score.
-    Valid = right script and plausible length. Falls back to the main answer if nothing is valid.
+    Order: a valid machine translation, then clean matches by match score, then the main answer.
+    Valid = right script, plausible length, and free from crowdsourced vandalism/troll entries.
     """
     main = ((body.get("responseData") or {}).get("translatedText") or "").strip()
     matches = [m for m in body.get("matches") or [] if isinstance(m, dict) and (m.get("translation") or "").strip()]
 
     def ok(text: str) -> bool:
         text = html.unescape(text)
+        src_lower = source.lower()
+        cand_lower = text.lower()
+        # Vandalism protection: reject romantic/troll translations when source has no such intent
+        if any(tp in cand_lower or tp in text for tp in _TROLL_PATTERNS):
+            if "love" not in src_lower and "darling" not in src_lower:
+                return False
         return in_script(text, target_lang) and plausible_length(source, text)
 
     machine = [m["translation"] for m in matches if m.get("created-by") == "MT!"]
     others = [m["translation"] for m in sorted(matches, key=lambda m: -float(m.get("match") or 0))]
-    for candidate in [*machine, main, *others]:
+    for candidate in [*machine, *others, main]:
         if candidate and ok(candidate):
             return candidate.strip()
-    return main
+    if ok(main):
+        return main
+    return machine[0].strip() if machine else (source if not ok(main) else main)
 
 
 def split_for_limit(text: str, max_bytes: int = MAX_Q_BYTES) -> list[str]:

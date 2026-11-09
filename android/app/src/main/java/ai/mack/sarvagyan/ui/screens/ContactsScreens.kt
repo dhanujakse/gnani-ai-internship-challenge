@@ -118,20 +118,64 @@ fun rememberPlaceCall(onStarted: () -> Unit): (String, String) -> Unit {
 
 data class DevicePhoneContact(val name: String, val number: String, val hash: String)
 
+data class ContactSyncStats(
+    val contactsRead: Int,
+    val numbersRead: Int,
+    val normalizedNumbers: Int,
+    val failedNumbers: Int,
+    val uniqueNumbers: Int,
+    val contacts: List<DevicePhoneContact>,
+)
+
+fun normalizePhoneE164(raw: String, defaultCountryCode: String = "+91"): String? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+    var cleaned = trimmed.replace(Regex("[^0-9+]"), "")
+    if (cleaned.startsWith("+")) {
+        val digits = cleaned.substring(1).filter { it.isDigit() }
+        return if (digits.length in 7..15) "+$digits" else null
+    }
+    if (cleaned.startsWith("00")) {
+        val digits = cleaned.substring(2).filter { it.isDigit() }
+        return if (digits.length in 7..15) "+$digits" else null
+    }
+    cleaned = cleaned.replace("+", "")
+    if (cleaned.startsWith("0") && cleaned.length == 11) {
+        val without0 = cleaned.substring(1)
+        return "$defaultCountryCode$without0"
+    }
+    if (cleaned.length == 10) {
+        return "$defaultCountryCode$cleaned"
+    }
+    if (cleaned.length == 12 && cleaned.startsWith("91")) {
+        return "+$cleaned"
+    }
+    if (cleaned.length in 7..15) {
+        return "$defaultCountryCode$cleaned"
+    }
+    return null
+}
+
 private fun sha256Hex(s: String): String {
     val md = MessageDigest.getInstance("SHA-256")
     val bytes = md.digest(s.toByteArray(Charsets.UTF_8))
     return bytes.joinToString("") { "%02x".format(it) }
 }
 
-private fun readDeviceContacts(context: Context): List<DevicePhoneContact> {
+private fun readDeviceContacts(context: Context): ContactSyncStats {
     val result = mutableListOf<DevicePhoneContact>()
-    val seen = mutableSetOf<String>()
+    val seenHashes = mutableSetOf<String>()
+    val seenContactIds = mutableSetOf<String>()
+    var totalNumbers = 0
+    var normalizedCount = 0
+    var failedCount = 0
+
     try {
         val cr = context.contentResolver
         val cursor = cr.query(
             ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
             arrayOf(
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                 ContactsContract.CommonDataKinds.Phone.NUMBER
             ),
@@ -139,20 +183,44 @@ private fun readDeviceContacts(context: Context): List<DevicePhoneContact> {
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
         )
         cursor?.use { c ->
+            val idIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
             val nameIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
             val numIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
             while (c.moveToNext()) {
+                val contactId = if (idIdx >= 0) c.getString(idIdx) ?: "" else ""
+                if (contactId.isNotEmpty()) seenContactIds.add(contactId)
                 val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Contact" else "Contact"
                 val num = if (numIdx >= 0) c.getString(numIdx) ?: "" else ""
-                val clean = num.replace("[^0-9+]".toRegex(), "")
-                if (clean.length >= 7 && seen.add(clean)) {
-                    val hash = sha256Hex(clean)
-                    result.add(DevicePhoneContact(name, num, hash))
+                totalNumbers++
+                val norm = normalizePhoneE164(num, "+91")
+                if (norm != null) {
+                    normalizedCount++
+                    val hash = sha256Hex(norm)
+                    if (seenHashes.add(hash)) {
+                        result.add(DevicePhoneContact(name, norm, hash))
+                    }
+                } else {
+                    failedCount++
                 }
             }
         }
-    } catch (_: Exception) {}
-    return result
+    } catch (e: Exception) {
+        android.util.Log.e("ContactSync", "Error reading contacts: ${e.message}", e)
+    }
+
+    val contactsCount = if (seenContactIds.isNotEmpty()) seenContactIds.size else result.size
+    android.util.Log.i(
+        "ContactSync",
+        "Contacts read: $contactsCount, numbers read: $totalNumbers, normalized: $normalizedCount, failed: $failedCount, unique: ${result.size}"
+    )
+    return ContactSyncStats(
+        contactsRead = contactsCount,
+        numbersRead = totalNumbers,
+        normalizedNumbers = normalizedCount,
+        failedNumbers = failedCount,
+        uniqueNumbers = result.size,
+        contacts = result
+    )
 }
 
 private fun shareInvite(context: Context, contactName: String) {
@@ -183,6 +251,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     var phoneContacts by remember { mutableStateOf<List<DevicePhoneContact>>(emptyList()) }
     var matchedUsers by remember { mutableStateOf<List<MatchedContact>>(emptyList()) }
     var syncingContacts by remember { mutableStateOf(false) }
+    var syncProgress by remember { mutableStateOf<String?>(null) }
 
     suspend fun load() {
         try {
@@ -199,21 +268,38 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     fun syncPhone() {
         if (!hasContactPermission) return
         syncingContacts = true
+        syncProgress = "Reading contacts…"
         scope.launch {
             try {
-                val list = readDeviceContacts(context)
+                val stats = readDeviceContacts(context)
+                val list = stats.contacts
                 phoneContacts = list
                 if (list.isNotEmpty()) {
-                    val hashes = list.map { it.hash }
-                    val res = c.api.matchPhones(hashes)
-                    matchedUsers = res.matches
+                    val allMatches = mutableListOf<MatchedContact>()
+                    val chunks = list.chunked(100)
+                    var processed = 0
+                    chunks.forEach { chunk ->
+                        val hashes = chunk.map { it.hash }
+                        val res = c.api.matchPhones(hashes)
+                        allMatches.addAll(res.matches)
+                        processed += chunk.size
+                        syncProgress = "Synced $processed of ${list.size}"
+                    }
+                    matchedUsers = allMatches
+                    val matchedCount = allMatches.size
+                    android.util.Log.i(
+                        "ContactSync",
+                        "Sync completed. Contacts read: ${stats.contactsRead}, Numbers after normalization: ${stats.normalizedNumbers}, Unique numbers: ${stats.uniqueNumbers}, Matched: $matchedCount, Failed: ${stats.failedNumbers}"
+                    )
                 } else {
                     matchedUsers = emptyList()
+                    android.util.Log.i("ContactSync", "No device contacts available to match.")
                 }
             } catch (e: Exception) {
                 error = (e as? ApiException)?.message ?: e.message
             } finally {
                 syncingContacts = false
+                syncProgress = null
             }
         }
     }
@@ -341,7 +427,10 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                     }
                 }
                 if (syncingContacts) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                    syncProgress?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp))
+                    }
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
                 }
 
                 SectionTitle("On Sarvagyan (${matchedUsers.size})")
@@ -392,7 +481,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                 if (unmatched.isEmpty() && !syncingContacts) {
                     Text("All your phone contacts are already on Sarvagyan!", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    unmatched.take(50).forEach { u ->
+                    unmatched.forEach { u ->
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically

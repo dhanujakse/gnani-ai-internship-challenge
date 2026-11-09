@@ -122,12 +122,12 @@ class ApiClient(
     }
 
     suspend fun health(): Health = request("GET", "/health", null, Health.serializer())
-    suspend fun register(email: String, password: String, name: String, username: String? = null): Session =
-        request("POST", "/v1/auth/register", obj("email" to email, "password" to password, "display_name" to name, "username" to username, "device" to deviceName), Session.serializer())
+    suspend fun register(email: String, password: String, name: String, username: String? = null, language: String? = null): Session =
+        request("POST", "/v1/auth/register", obj("email" to email, "password" to password, "display_name" to name, "username" to username, "language" to language, "device" to deviceName), Session.serializer())
     suspend fun login(email: String, password: String): Session =
         request("POST", "/v1/auth/login", obj("email" to email, "password" to password, "device" to deviceName), Session.serializer())
-    suspend fun demo(name: String, username: String? = null): Session =
-        request("POST", "/v1/auth/demo", obj("display_name" to name, "username" to username, "device" to deviceName), Session.serializer())
+    suspend fun demo(name: String, username: String? = null, language: String? = null): Session =
+        request("POST", "/v1/auth/demo", obj("display_name" to name, "username" to username, "language" to language, "device" to deviceName), Session.serializer())
     suspend fun refreshTokens(refreshToken: String): Session =
         request("POST", "/v1/auth/refresh", obj("refresh_token" to refreshToken), Session.serializer())
 
@@ -179,7 +179,8 @@ class ApiClient(
         request("GET", "/v1/users/check-username?username=${java.net.URLEncoder.encode(username.trim().removePrefix("@"), "UTF-8")}", null, CheckUsernameResponse.serializer())
 
     suspend fun searchUsers(query: String): SearchUsersResponse {
-        val clean = query.trim().removePrefix("@")
+        val clean = query.trim().removePrefix("@").trim()
+        if (clean.isEmpty()) return SearchUsersResponse(emptyList())
         return request("GET", "/v1/users/search?q=${java.net.URLEncoder.encode(clean, "UTF-8")}", null, SearchUsersResponse.serializer())
     }
 

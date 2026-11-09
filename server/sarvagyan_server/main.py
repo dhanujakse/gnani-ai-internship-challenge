@@ -326,7 +326,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     def check_username_valid(u: str | None, db: Database, exclude_id: str | None = None) -> str | None:
         if not u:
             return None
-        cleaned = u.strip()
+        cleaned = u.strip().lstrip("@")
         if not USERNAME_RE.match(cleaned):
             raise HTTPException(422, "Username must be 3-24 characters containing only letters, numbers, and underscores.")
         if not db.is_username_available(cleaned, exclude_user_id=exclude_id):
@@ -339,6 +339,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         password: str = Field(min_length=8, max_length=200)
         display_name: str = Field(min_length=1, max_length=60)
         username: str | None = None
+        language: str | None = None
         device: str | None = Field(default=None, max_length=60)
         phone_hash: str | None = None
 
@@ -350,6 +351,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     class DemoIn(BaseModel):
         display_name: str = Field(min_length=1, max_length=60)
         username: str | None = None
+        language: str | None = None
         device: str | None = Field(default=None, max_length=60)
 
     class RefreshIn(BaseModel):
@@ -363,7 +365,14 @@ def create_app(services: Services | None = None) -> FastAPI:
         if s.db.get_user_by_email(email):
             raise HTTPException(409, "An account with this email already exists. Sign in instead.")
         uname = check_username_valid(body.username, s.db) if body.username else None
-        user = s.db.create_user(body.display_name.strip(), email, hash_password(body.password), is_demo=False, username=uname)
+        lang = "en-IN"
+        if body.language:
+            try:
+                get_language(body.language)
+                lang = body.language
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
+        user = s.db.create_user(body.display_name.strip(), email, hash_password(body.password), is_demo=False, username=uname, language=lang)
         if body.phone_hash:
             s.db.update_user(user["id"], phone_hash=body.phone_hash.strip().lower())
         return session(user, s, body.device)
@@ -454,7 +463,14 @@ def create_app(services: Services | None = None) -> FastAPI:
         if not s.settings.demo_mode:
             raise HTTPException(403, "Guest sign-in is disabled on this server.")
         uname = check_username_valid(body.username, s.db)
-        user = s.db.create_user(body.display_name.strip(), None, None, is_demo=True, username=uname)
+        lang = "en-IN"
+        if body.language:
+            try:
+                get_language(body.language)
+                lang = body.language
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
+        user = s.db.create_user(body.display_name.strip(), None, None, is_demo=True, username=uname, language=lang)
         return session(user, s, body.device)
 
     class MeIn(BaseModel):
@@ -501,8 +517,11 @@ def create_app(services: Services | None = None) -> FastAPI:
         }
 
     @app.get("/v1/users/search", dependencies=[Depends(rate_limit("search", 60, 60))])
-    def search_users(q: str = Query(min_length=1), user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
-        return {"users": s.db.search_users(q, current_user_id=user["id"])}
+    def search_users(q: str = Query(default=""), user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        clean = q.strip().lstrip("@").strip()
+        if not clean:
+            return {"users": []}
+        return {"users": s.db.search_users(clean, current_user_id=user["id"])}
 
     # --- config -------------------------------------------------------------------------
     @app.get("/health")
@@ -636,11 +655,11 @@ def create_app(services: Services | None = None) -> FastAPI:
         return {"ok": True}
 
     class MatchPhonesIn(BaseModel):
-        phone_hashes: list[str] = Field(default_factory=list, max_length=500)
+        phone_hashes: list[str] = Field(default_factory=list, max_length=2000)
 
     @app.post("/v1/contacts/match-phones")
     def match_phones(body: MatchPhonesIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
-        hashes = [h.strip().lower() for h in body.phone_hashes if len(h.strip()) >= 16][:500]
+        hashes = [h.strip().lower() for h in body.phone_hashes if len(h.strip()) >= 16]
         matched = s.db.match_phone_hashes(hashes)
         return {
             "matches": [
@@ -1096,7 +1115,8 @@ def create_app(services: Services | None = None) -> FastAPI:
     async def chat_socket(ws: WebSocket) -> None:
         s: Services = app.state.services
         # the token comes only in the Authorization header, never in the URL (URLs end up in logs)
-        user = s.user_for_token((ws.headers.get("authorization") or "").removeprefix("Bearer ").strip())
+        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip() or ws.query_params.get("token") or ""
+        user = s.user_for_token(auth_token)
         if user is None:
             await ws.close(code=4401, reason="unauthorized")
             return
@@ -1133,7 +1153,8 @@ def create_app(services: Services | None = None) -> FastAPI:
     @app.websocket("/v1/calls/{call_id}/ws")
     async def call_socket(ws: WebSocket, call_id: str) -> None:
         s: Services = app.state.services
-        user = s.user_for_token((ws.headers.get("authorization") or "").removeprefix("Bearer ").strip())
+        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip() or ws.query_params.get("token") or ""
+        user = s.user_for_token(auth_token)
         call = s.calls.get(call_id)
         if user is None:
             await ws.close(code=4401, reason="unauthorized")
@@ -1216,6 +1237,16 @@ def create_app(services: Services | None = None) -> FastAPI:
             if (part.language, part.auto_detect) != (old_lang, old_auto) and (pipe := room.pipelines.get(part.user_id)):
                 await pipe.set_language()
             await room.broadcast({"type": "participant", "participant": part.public()})
+            if part.language != old_lang:
+                from sarvagyan_server.languages import get_language
+                new_lang_name = get_language(part.language).name
+                for other_id, other_part in room.participants.items():
+                    if other_id != part.user_id:
+                        await room.send(other_part, {
+                            "type": "notice",
+                            "code": "language_switched",
+                            "message": f"{part.name} switched to {new_lang_name}",
+                        })
         elif kind == "retry":
             await room.retry(str(msg.get("id", "")))
         elif kind == "ping":

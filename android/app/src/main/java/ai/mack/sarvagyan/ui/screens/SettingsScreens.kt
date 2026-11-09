@@ -283,6 +283,7 @@ fun SettingsScreen(
             }
             "calls" -> {
         SectionTitle("Audio")
+        SettingSwitch("Noise reduction", "Filter out background noise and silence before sending to speech recognition.", s.noiseReduction) { on -> update { it.copy(noiseReduction = on) } }
         SettingSwitch("Hear translated speech", "Off = subtitles only. You still hear the other person's own voice.", s.translatedAudio) { on -> update { it.copy(translatedAudio = on) } }
         SettingSwitch("Start calls on speaker", "Otherwise the phone earpiece is used.", s.speakerOn) { on -> update { it.copy(speakerOn = on) } }
         Text("Other person's original voice: ${"%.0f".format(s.originalVolume * 100)}%")

@@ -35,10 +35,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.heightIn
+import ai.mack.sarvagyan.data.Language
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SubtitlesOff
@@ -281,6 +287,7 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var compact by remember { mutableStateOf(false) }
     var showAudio by remember { mutableStateOf(false) }
+    var showLanguageSheet by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val colors = LocalCallColors.current
@@ -311,7 +318,9 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
             QualityChip(st.quality, st.rttMs, st.mediaConnected)
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            LanguagePill("You: ${myLang?.native ?: "?"}", highlighted = true)
+            Box(Modifier.clickable { showLanguageSheet = true }) {
+                LanguagePill("You: ${myLang?.native ?: "?"} ▾", highlighted = true)
+            }
             Icon(Icons.Filled.Translate, null, Modifier.padding(horizontal = 8.dp).size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             LanguagePill("Them: ${peerLang?.native ?: "…"}")
             Spacer(Modifier.weight(1f))
@@ -371,6 +380,7 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
                 isListening = !st.muted && st.micStreaming,
                 size = 52.dp,
             )
+            CallControl(Icons.Filled.Language, myLang?.code?.substringBefore("-")?.uppercase() ?: "Lang") { showLanguageSheet = true }
             CallControl(Icons.AutoMirrored.Filled.VolumeUp, st.route?.label ?: "Audio") { showAudio = true }
             CallControl(if (st.translatedAudio) Icons.Filled.Translate else Icons.Filled.SubtitlesOff,
                 if (st.translatedAudio) "Voice on" else "Subtitles only", active = !st.translatedAudio) { call.setTranslatedAudio(!st.translatedAudio) }
@@ -383,6 +393,17 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
     }
 }
 
+    val langs by c.languages.collectAsStateWithLifecycle()
+    if (showLanguageSheet) LanguageSheet(
+        languages = langs,
+        currentCode = st.me?.language ?: settings.myLanguage,
+        onSelect = { newCode ->
+            call.setLanguage(newCode, settings.autoDetect)
+            scope.launch { c.settingsStore.update { it.copy(myLanguage = newCode) } }
+        },
+        onDismiss = { showLanguageSheet = false }
+    )
+
     if (showAudio) AudioSheet(
         routes = st.routes, route = st.route, volume = st.originalVolume, scale = st.subtitleScale,
         onRoute = call::setRoute, onVolume = call::setOriginalVolume, onScale = call::setSubtitleScale, onDismiss = { showAudio = false },
@@ -393,6 +414,50 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
         confirmButton = { TextButton(onClick = { confirmEnd = false; call.end() }) { Text("End call", color = colors.endCall) } },
         dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep talking") } },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LanguageSheet(
+    languages: List<Language>,
+    currentCode: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp)
+        ) {
+            Text("Switch speaking language", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Text("Changes what you speak mid-call. Your peer's audio stays connected.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(16.dp))
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 360.dp)) {
+                items(languages) { l ->
+                    val isSelected = l.code == currentCode
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable {
+                                onSelect(l.code)
+                                onDismiss()
+                            }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(l.native, style = MaterialTheme.typography.bodyLarge, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                            Text(l.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (isSelected) {
+                            Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun statusLabel(s: CallStatus) = when (s) {

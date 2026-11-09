@@ -79,6 +79,8 @@ _COLUMNS = [
     ("users", "read_receipts", "INTEGER NOT NULL DEFAULT 1"),
     ("users", "chat_retention_days", "INTEGER NOT NULL DEFAULT 30"),
     ("users", "phone_hash", "TEXT"),
+    ("users", "username_norm", "TEXT"),
+    ("users", "avatar", "TEXT"),
     ("messages", "expires_at", "REAL"),
     ("messages", "deleted_at", "REAL"),
     ("conversation_members", "last_delivered_at", "REAL NOT NULL DEFAULT 0"),
@@ -111,7 +113,9 @@ class Database:
                 cols = [r[1] for r in self._db.execute(f"PRAGMA table_info({table})").fetchall()]
                 if col not in cols:
                     self._db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+            self._db.execute("UPDATE users SET username_norm = LOWER(TRIM(username)) WHERE username IS NOT NULL AND (username_norm IS NULL OR username_norm != LOWER(TRIM(username)))")
             self._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_username ON users(username)")
+            self._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_username_norm ON users(username_norm)")
             self._db.commit()
 
     def _exec(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:
@@ -122,10 +126,12 @@ class Database:
             return rows
 
     # users -----------------------------------------------------------------------
-    def create_user(self, display_name: str, email: str | None, password_hash: str | None, is_demo: bool, username: str | None = None) -> dict:
+    def create_user(self, display_name: str, email: str | None, password_hash: str | None, is_demo: bool, username: str | None = None, language: str = "ta-IN") -> dict:
         uid = uuid.uuid4().hex
-        self._exec("INSERT INTO users (id, email, display_name, password_hash, is_demo, username, created_at) VALUES (?,?,?,?,?,?,?)",
-                   (uid, email, display_name, password_hash, int(is_demo), username, time.time()))  # fmt: skip
+        uname = username.strip() if username else None
+        uname_norm = uname.lower() if uname else None
+        self._exec("INSERT INTO users (id, email, display_name, password_hash, is_demo, username, username_norm, language, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                   (uid, email, display_name.strip(), password_hash, int(is_demo), uname, uname_norm, language, time.time()))  # fmt: skip
         return self.get_user(uid)  # type: ignore[return-value]
 
     def get_user(self, uid: str) -> dict | None:
@@ -137,44 +143,57 @@ class Database:
         return dict(rows[0]) if rows else None
 
     def get_user_by_username(self, username: str) -> dict | None:
-        rows = self._exec("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username.strip(),))
+        u = username.strip().lstrip("@").lower()
+        rows = self._exec("SELECT * FROM users WHERE username_norm = ?", (u,))
         return dict(rows[0]) if rows else None
 
     def is_username_available(self, username: str, exclude_user_id: str | None = None) -> bool:
-        u = username.strip().lower()
+        u = username.strip().lstrip("@").lower()
         if exclude_user_id:
-            rows = self._exec("SELECT 1 FROM users WHERE LOWER(username) = ? AND id != ? LIMIT 1", (u, exclude_user_id))
+            rows = self._exec("SELECT 1 FROM users WHERE username_norm = ? AND id != ? LIMIT 1", (u, exclude_user_id))
         else:
-            rows = self._exec("SELECT 1 FROM users WHERE LOWER(username) = ? LIMIT 1", (u,))
+            rows = self._exec("SELECT 1 FROM users WHERE username_norm = ? LIMIT 1", (u,))
         return len(rows) == 0
 
     def search_users(self, query: str, current_user_id: str, limit: int = 25) -> list[dict]:
-        cleaned = query.strip().lstrip("@").lower()
-        q = f"%{cleaned}%"
+        cleaned = query.strip().lstrip("@").strip().lower()
+        if not cleaned:
+            return []
+        prefix = f"{cleaned}%"
+        substr = f"%{cleaned}%"
         rows = self._exec(
-            """SELECT id, display_name, username, language, is_demo FROM users
-               WHERE (LOWER(username) LIKE ? OR LOWER(display_name) LIKE ?) AND id != ?
+            """SELECT id, display_name, username, avatar FROM users
+               WHERE (username_norm = ? OR username_norm LIKE ? OR LOWER(display_name) LIKE ?) AND id != ?
                  AND id NOT IN (SELECT blocked_id FROM blocks WHERE user_id = ?)
                  AND id NOT IN (SELECT user_id FROM blocks WHERE blocked_id = ?)
-               ORDER BY (CASE WHEN LOWER(username) = ? THEN 0 WHEN LOWER(username) LIKE ? THEN 1 ELSE 2 END), display_name ASC LIMIT ?""",
-            (q, q, current_user_id, current_user_id, current_user_id, cleaned, f"{cleaned}%", limit),
+               ORDER BY (CASE WHEN username_norm = ? THEN 0 WHEN username_norm LIKE ? THEN 1 ELSE 2 END), display_name ASC LIMIT ?""",
+            (cleaned, prefix, substr, current_user_id, current_user_id, current_user_id, cleaned, prefix, limit),
         )
-        return [dict(r) for r in rows]
+        return [{"id": r["id"], "display_name": r["display_name"], "username": r["username"], "avatar": r["avatar"]} for r in rows]
 
     def match_phone_hashes(self, hashes: list[str]) -> list[dict]:
         if not hashes:
             return []
-        placeholders = ",".join("?" for _ in hashes)
-        rows = self._exec(
-            f"""SELECT id, display_name, username, language, is_demo, phone_hash FROM users
-               WHERE phone_hash IN ({placeholders}) AND phone_hash IS NOT NULL""",
-            tuple(hashes),
-        )
-        return [dict(r) for r in rows]
+        unique_hashes = list(set(h.strip().lower() for h in hashes if h and h.strip()))
+        out: list[dict] = []
+        chunk_size = 200
+        for i in range(0, len(unique_hashes), chunk_size):
+            chunk = unique_hashes[i:i + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self._exec(
+                f"""SELECT id, display_name, username, language, is_demo, phone_hash FROM users
+                   WHERE phone_hash IN ({placeholders}) AND phone_hash IS NOT NULL""",
+                tuple(chunk),
+            )
+            out.extend([dict(r) for r in rows])
+        return out
 
     def update_user(self, uid: str, **fields: Any) -> dict | None:
+        if "username" in fields and fields["username"] is not None:
+            fields["username"] = fields["username"].strip()
+            fields["username_norm"] = fields["username"].lower()
         allowed = {k: v for k, v in fields.items()
-                   if k in ("display_name", "language", "username", "allow_calls", "read_receipts",
+                   if k in ("display_name", "language", "username", "username_norm", "avatar", "allow_calls", "read_receipts",
                             "chat_retention_days", "phone_hash") and v is not None}  # fmt: skip
         if allowed:
             sets = ", ".join(f"{k} = ?" for k in allowed)

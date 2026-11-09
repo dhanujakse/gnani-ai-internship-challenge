@@ -583,6 +583,12 @@ private fun NewGroupDialog(onDismiss: () -> Unit, onCreate: (String, List<String
                 )
                 if (searching) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
                 LazyColumn(Modifier.weight(1f).padding(top = 4.dp)) {
+                    if (results.isEmpty() && query.isNotBlank() && !searching) {
+                        item {
+                            Text("No users found matching \"$query\"", style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+                        }
+                    }
                     items(results.filter { r -> selectedMembers.none { it.id == r.id } }) { u ->
                         Row(
                             Modifier.fillMaxWidth().clickable { selectedMembers.add(u) }.padding(vertical = 6.dp),
