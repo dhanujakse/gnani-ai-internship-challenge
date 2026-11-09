@@ -110,8 +110,10 @@ class MicPipeline(
     private val clock: () -> Long,
     var noiseReduction: Boolean = true,
     private val energyThreshold: Double = 350.0,
-    private val minSpeechMs: Long = 200L,
-    private val hangoverMs: Long = 350L,
+    // 0: speech passes on its first loud chunk (waiting would cut the first syllable, it is never sent later).
+    // 800 ms tail: longer than Gnani's 600 ms end-of-sentence pause, so normal pauses don't split sentences.
+    private val minSpeechMs: Long = 0L,
+    private val hangoverMs: Long = 800L,
     private val send: (ByteArray) -> Unit,
 ) {
     @Volatile var muted = false

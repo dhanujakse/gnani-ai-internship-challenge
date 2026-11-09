@@ -1129,7 +1129,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     async def chat_socket(ws: WebSocket) -> None:
         s: Services = app.state.services
         # the token comes only in the Authorization header, never in the URL (URLs end up in logs)
-        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip() or ws.query_params.get("token") or ""
+        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip()  # header only: URLs end up in logs
         user = s.user_for_token(auth_token)
         if user is None:
             await ws.close(code=4401, reason="unauthorized")
@@ -1167,7 +1167,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     @app.websocket("/v1/calls/{call_id}/ws")
     async def call_socket(ws: WebSocket, call_id: str) -> None:
         s: Services = app.state.services
-        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip() or ws.query_params.get("token") or ""
+        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip()  # header only: URLs end up in logs
         user = s.user_for_token(auth_token)
         call = s.calls.get(call_id)
         if user is None:

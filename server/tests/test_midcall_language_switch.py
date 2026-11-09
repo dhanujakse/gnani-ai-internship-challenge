@@ -59,8 +59,8 @@ def test_midcall_language_switch_and_notice(call_test_setup):
     assert res_join.status_code == 200
 
     # 4. Connect WebSockets for both Alice and Bob
-    with client.websocket_connect(f"/v1/calls/{call_id}/ws?token={token_a}") as ws_a, \
-         client.websocket_connect(f"/v1/calls/{call_id}/ws?token={token_b}") as ws_b:
+    with client.websocket_connect(f"/v1/calls/{call_id}/ws", headers={"Authorization": f"Bearer {token_a}"}) as ws_a, \
+         client.websocket_connect(f"/v1/calls/{call_id}/ws", headers={"Authorization": f"Bearer {token_b}"}) as ws_b:
 
         # Alice and Bob send initial hello
         ws_a.send_json({"type": "hello", "language": "ta-IN"})
