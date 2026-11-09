@@ -86,7 +86,9 @@ class CallSession(
 
     private val socket = CallSocket(http, json)
     private val gate = EchoGate()
-    private val router = AudioRouter(context)
+    private val router: AudioRouter = AudioRouter(context) { r ->
+        _state.update { it.copy(routes = r.available(), route = r.current()) }
+    }
     private val player = TranslatedAudioPlayer { id ->
         gate.setPlaying(id != null, System.currentTimeMillis())
         _state.update { it.copy(conversation = it.conversation.withPlaying(id)) }
@@ -105,10 +107,18 @@ class CallSession(
     private var reconnectAttempt = 0
     private var everConnected = false // after the first connection, re-offers restart ICE (network change)
 
-    fun start() {
+    fun start(initialRoute: AudioRoute? = null) {
         router.begin()
-        _state.update { it.copy(routes = router.available()) }
-        if (settings.speakerOn) router.select(AudioRoute.Speaker)
+        val avail = router.available()
+        _state.update { it.copy(routes = avail) }
+        val chosen = initialRoute ?: if (settings.speakerOn) AudioRoute.Speaker else AudioRoute.Earpiece
+        if (avail.contains(chosen)) {
+            router.select(chosen)
+        } else if (avail.isNotEmpty()) {
+            router.select(avail.first())
+        } else {
+            router.select(chosen)
+        }
         _state.update { it.copy(route = router.current()) }
         player.volume = 1f
         connectSocket()
@@ -287,6 +297,8 @@ class CallSession(
                     PeerConnection.PeerConnectionState.CONNECTED -> {
                         everConnected = true
                         _state.update { it.copy(mediaConnected = true, status = CallStatus.Live, banner = null) }
+                        router.reapply()
+                        _state.update { it.copy(routes = router.available(), route = router.current()) }
                     }
                     PeerConnection.PeerConnectionState.DISCONNECTED -> _state.update {
                         it.copy(mediaConnected = false, banner = Banner("Call audio interrupted — recovering…"))

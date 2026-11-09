@@ -615,6 +615,92 @@ private fun NewGroupDialog(onDismiss: () -> Unit, onCreate: (String, List<String
     )
 }
 
+@Composable
+private fun AddMemberDialog(
+    existingMemberIds: List<String>,
+    onDismiss: () -> Unit,
+    onAdd: (UserSearchResult) -> Unit,
+) {
+    val c = LocalContext.current.container
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<UserSearchResult>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(query) {
+        val q = query.trim().removePrefix("@")
+        if (q.isEmpty()) {
+            results = emptyList()
+            return@LaunchedEffect
+        }
+        delay(300)
+        searching = true
+        try {
+            val res = c.api.searchUsers(q)
+            results = res.users.filter { it.id !in existingMemberIds }
+            error = null
+        } catch (e: Exception) {
+            error = (e as? ApiException)?.message ?: e.message
+            results = emptyList()
+        } finally {
+            searching = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Member to Group") },
+        text = {
+            Column(Modifier.fillMaxWidth().height(320.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Search by @username or name") },
+                    leadingIcon = { Icon(Icons.Filled.Search, null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                if (searching) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                }
+                Spacer(Modifier.height(4.dp))
+                LazyColumn(Modifier.weight(1f)) {
+                    if (results.isEmpty() && query.isNotBlank() && !searching) {
+                        item {
+                            Text("No users found matching \"$query\"", style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+                        }
+                    }
+                    items(results) { u ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { onAdd(u) }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Avatar(u.displayName, LocalCallColors.current.peer, 36.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(u.displayName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                u.username?.let {
+                                    Text("@$it", style = MaterialTheme.typography.bodySmall, color = Brand.HighlightAccent)
+                                }
+                            }
+                            TextButton(onClick = { onAdd(u) }) {
+                                Text("Add")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
 /**
  * Dedicated conversation screen for direct and group multilingual chat.
  * Includes automatic translation toggle and voice messaging with glitch-free playback.
@@ -635,6 +721,7 @@ fun ChatConversationScreen(
     var textInput by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showAddMember by remember { mutableStateOf(false) }
 
     // Toggle map for viewing original text vs translated text
     val showOriginalMap = remember { mutableStateMapOf<String, Boolean>() }
@@ -803,6 +890,11 @@ fun ChatConversationScreen(
                         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Brand.HighlightAccent)
                     }
                 }
+                if (conversation?.isGroup == true) {
+                    IconButton(onClick = { showAddMember = true }) {
+                        Icon(Icons.Filled.PersonAdd, contentDescription = "Add Member", tint = Brand.HighlightAccent)
+                    }
+                }
             }
 
             error?.let {
@@ -908,6 +1000,26 @@ fun ChatConversationScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
+        }
+
+        if (showAddMember) {
+            val existing = conversation?.members?.map { it.id }.orEmpty()
+            AddMemberDialog(
+                existingMemberIds = existing,
+                onDismiss = { showAddMember = false },
+                onAdd = { user ->
+                    showAddMember = false
+                    scope.launch {
+                        try {
+                            c.api.addConversationMember(conversationId, user.id)
+                            conversation = c.api.conversation(conversationId).conversation
+                            loadMessages()
+                        } catch (e: ApiException) {
+                            error = e.message
+                        }
+                    }
+                }
+            )
         }
     }
 }

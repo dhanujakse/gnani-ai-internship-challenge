@@ -229,3 +229,15 @@ data class ContactUser(
 
 @Serializable
 data class ContactUsersResponse(val contacts: List<ContactUser>)
+
+@Serializable
+data class MatchedContact(
+    val id: String,
+    val name: String,
+    val username: String? = null,
+    val language: String = "ta-IN",
+    @SerialName("phone_hash") val phoneHash: String? = null,
+)
+
+@Serializable
+data class MatchPhonesResponse(val matches: List<MatchedContact>)

@@ -176,10 +176,25 @@ class ApiClient(
     }
 
     suspend fun checkUsername(username: String): CheckUsernameResponse =
-        request("GET", "/v1/users/check-username?username=$username", null, CheckUsernameResponse.serializer())
+        request("GET", "/v1/users/check-username?username=${java.net.URLEncoder.encode(username.trim().removePrefix("@"), "UTF-8")}", null, CheckUsernameResponse.serializer())
 
-    suspend fun searchUsers(query: String): SearchUsersResponse =
-        request("GET", "/v1/users/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}", null, SearchUsersResponse.serializer())
+    suspend fun searchUsers(query: String): SearchUsersResponse {
+        val clean = query.trim().removePrefix("@")
+        return request("GET", "/v1/users/search?q=${java.net.URLEncoder.encode(clean, "UTF-8")}", null, SearchUsersResponse.serializer())
+    }
+
+    suspend fun matchPhones(phoneHashes: List<String>): MatchPhonesResponse =
+        request("POST", "/v1/contacts/match-phones", buildJsonObject {
+            put("phone_hashes", kotlinx.serialization.json.JsonArray(phoneHashes.map { JsonPrimitive(it) }))
+        }, MatchPhonesResponse.serializer())
+
+    suspend fun addConversationMember(conversationId: String, userId: String) {
+        request("POST", "/v1/chat/conversations/$conversationId/members", obj("user_id" to userId), JsonObject.serializer())
+    }
+
+    suspend fun removeConversationMember(conversationId: String, userId: String) {
+        request("DELETE", "/v1/chat/conversations/$conversationId/members/$userId", null, JsonObject.serializer())
+    }
     suspend fun languages(): LanguagesResponse = request("GET", "/v1/languages", null, LanguagesResponse.serializer())
     suspend fun createCall(language: String): CallInfo = request("POST", "/v1/calls", obj("language" to language), CallInfo.serializer())
     suspend fun joinCall(code: String, language: String): CallInfo =

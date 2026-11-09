@@ -183,11 +183,46 @@ fun AuthScreen(onSignedIn: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var usernameStatus by remember { mutableStateOf<String?>(null) }
+    var usernameAvailable by remember { mutableStateOf(false) }
+    var checkingUsername by remember { mutableStateOf(false) }
     var guestName by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showServer by remember { mutableStateOf(false) }
     var server by remember { mutableStateOf(c.settings.value.serverUrl) }
+
+    LaunchedEffect(username) {
+        val u = username.trim().removePrefix("@")
+        if (u.isEmpty()) {
+            usernameStatus = null
+            usernameAvailable = false
+            return@LaunchedEffect
+        }
+        if (u.length < 3) {
+            usernameStatus = "At least 3 characters needed"
+            usernameAvailable = false
+            return@LaunchedEffect
+        }
+        if (!u.all { it.isLetterOrDigit() || it == '_' }) {
+            usernameStatus = "Letters, numbers, and underscores only"
+            usernameAvailable = false
+            return@LaunchedEffect
+        }
+        delay(400)
+        checkingUsername = true
+        try {
+            val res = c.api.checkUsername(u)
+            usernameAvailable = res.available
+            usernameStatus = if (res.available) "✓ Username is available" else (res.reason ?: "This username is already taken. Please choose another username.")
+        } catch (_: Exception) {
+            usernameStatus = null
+            usernameAvailable = false
+        } finally {
+            checkingUsername = false
+        }
+    }
 
     fun run(block: suspend () -> ai.mack.sarvagyan.data.Session) {
         busy = true
@@ -223,6 +258,28 @@ fun AuthScreen(onSignedIn: () -> Unit) {
         if (tab == 1) {
             OutlinedTextField(name, { name = it }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it.trim().lowercase() },
+                label = { Text("Unique username") },
+                prefix = { Text("@") },
+                singleLine = true,
+                isError = usernameStatus != null && !usernameAvailable && !checkingUsername,
+                supportingText = {
+                    if (checkingUsername) {
+                        Text("Checking availability...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (usernameStatus != null) {
+                        Text(
+                            usernameStatus!!,
+                            color = if (usernameAvailable) Brand.HighlightAccent else MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Text("3-30 letters, numbers, or underscores")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
         }
         OutlinedTextField(email, { email = it.trim() }, label = { Text("Email") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
@@ -232,10 +289,22 @@ fun AuthScreen(onSignedIn: () -> Unit) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
         error?.let { Spacer(Modifier.height(12.dp)); ErrorBanner(it) }
         Spacer(Modifier.height(16.dp))
+        val canSubmit = if (tab == 0) {
+            email.contains('@') && password.length >= 1
+        } else {
+            email.contains('@') && password.length >= 8 && name.isNotBlank() && usernameAvailable && !checkingUsername
+        }
         PrimaryButton(
             if (tab == 0) "Sign in" else "Create account",
-            onClick = { if (tab == 0) run { c.api.login(email, password) } else run { c.api.register(email, password, name.ifBlank { email.substringBefore('@') }) } },
-            enabled = email.contains('@') && password.length >= (if (tab == 1) 8 else 1) && (tab == 0 || name.isNotBlank()),
+            onClick = {
+                if (tab == 0) {
+                    run { c.api.login(email, password) }
+                } else {
+                    val cleanUsername = username.trim().removePrefix("@")
+                    run { c.api.register(email, password, name.ifBlank { email.substringBefore('@') }, cleanUsername) }
+                }
+            },
+            enabled = canSubmit,
             loading = busy, modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(28.dp))

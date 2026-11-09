@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
@@ -29,13 +30,20 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Voicemail
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -94,6 +102,7 @@ fun HomeScreen(
     var code by remember { mutableStateOf("") }
     var unread by remember { mutableStateOf(0) }
     val placeCall = rememberPlaceCall(onResumeCall)
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     suspend fun load() {
         error = null
@@ -115,27 +124,116 @@ fun HomeScreen(
     }
     LaunchedEffect(Unit) { load() }
 
-    EmeraldAnimatedBackground {
-        Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
-        // header: profile + connection + settings/help
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Avatar(user?.displayName ?: "?", LocalCallColors.current.me)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(user?.displayName ?: "…", style = MaterialTheme.typography.titleLarge)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    when (online) {
-                        true -> StatusChip("Connected", LocalCallColors.current.success)
-                        false -> StatusChip("Offline", MaterialTheme.colorScheme.error)
-                        null -> StatusChip("Checking…", MaterialTheme.colorScheme.onSurfaceVariant, pulsing = true)
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.width(300.dp)
+            ) {
+                // Profile header card
+                Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                    Avatar(user?.displayName ?: "?", LocalCallColors.current.me, 64.dp)
+                    Spacer(Modifier.height(12.dp))
+                    Text(user?.displayName ?: "User", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    user?.username?.let {
+                        Text("@$it", style = MaterialTheme.typography.bodyMedium, color = Brand.HighlightAccent)
                     }
-                    if (user?.isDemo == true) { Spacer(Modifier.width(6.dp)); StatusChip("Demo account", LocalCallColors.current.warning) }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LanguagePill(c.language(settings.myLanguage)?.native ?: settings.myLanguage, highlighted = true)
+                        if (user?.isDemo == true) {
+                            Spacer(Modifier.width(6.dp))
+                            StatusChip("Demo account", LocalCallColors.current.warning)
+                        }
+                    }
                 }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                Spacer(Modifier.height(12.dp))
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.AutoMirrored.Filled.Chat, null) },
+                    label = { Text("Global Chat & Voicemail") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onVoicemail()
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Filled.People, null) },
+                    label = { Text("Contacts") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onContacts()
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Filled.Settings, null) },
+                    label = { Text("Settings") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onSettings()
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.AutoMirrored.Filled.Help, null) },
+                    label = { Text("Help & Manual") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onHelp()
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                Spacer(Modifier.weight(1f))
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.AutoMirrored.Filled.Logout, null, tint = MaterialTheme.colorScheme.error) },
+                    label = { Text("Sign out", color = MaterialTheme.colorScheme.error) },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                            c.signOut()
+                            onSignedOut()
+                        }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                Spacer(Modifier.height(16.dp))
             }
-            IconButton(onClick = onHelp) { Icon(Icons.AutoMirrored.Filled.Help, contentDescription = "Help") }
-            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
         }
-        Spacer(Modifier.height(16.dp))
+    ) {
+        EmeraldAnimatedBackground {
+            Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
+                // Header: Profile Avatar & Details (Click opens drawer)
+                Row(
+                    Modifier.fillMaxWidth().clickable { scope.launch { drawerState.open() } },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Avatar(user?.displayName ?: "?", LocalCallColors.current.me)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(user?.displayName ?: "…", style = MaterialTheme.typography.titleLarge)
+                        user?.username?.let {
+                            Text("@$it", style = MaterialTheme.typography.bodySmall, color = Brand.HighlightAccent)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            when (online) {
+                                true -> StatusChip("Connected", LocalCallColors.current.success)
+                                false -> StatusChip("Offline", MaterialTheme.colorScheme.error)
+                                null -> StatusChip("Checking…", MaterialTheme.colorScheme.onSurfaceVariant, pulsing = true)
+                            }
+                            if (user?.isDemo == true) { Spacer(Modifier.width(6.dp)); StatusChip("Demo account", LocalCallColors.current.warning) }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
 
         if (active != null && activeState != null && activeState.status != CallStatus.Ended && activeState.status != CallStatus.Failed) {
             AppCard(Modifier.clickable(role = Role.Button, onClick = onResumeCall)) {
@@ -249,6 +347,7 @@ fun HomeScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
 }
 
 @Composable

@@ -340,6 +340,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         display_name: str = Field(min_length=1, max_length=60)
         username: str | None = None
         device: str | None = Field(default=None, max_length=60)
+        phone_hash: str | None = None
 
     class LoginIn(BaseModel):
         email: str = Field(max_length=200)
@@ -361,8 +362,10 @@ def create_app(services: Services | None = None) -> FastAPI:
             raise HTTPException(422, "Enter a valid email address.")
         if s.db.get_user_by_email(email):
             raise HTTPException(409, "An account with this email already exists. Sign in instead.")
-        uname = check_username_valid(body.username, s.db)
+        uname = check_username_valid(body.username, s.db) if body.username else None
         user = s.db.create_user(body.display_name.strip(), email, hash_password(body.password), is_demo=False, username=uname)
+        if body.phone_hash:
+            s.db.update_user(user["id"], phone_hash=body.phone_hash.strip().lower())
         return session(user, s, body.device)
 
     @app.post("/v1/auth/login", dependencies=[Depends(rate_limit("login-ip", 60, 60))])
@@ -461,6 +464,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         display_name: str | None = Field(default=None, max_length=60)
         language: str | None = None
         username: str | None = None
+        phone_hash: str | None = None
 
     @app.get("/v1/me")
     def me(user: dict = Depends(current_user)) -> dict:
@@ -479,16 +483,22 @@ def create_app(services: Services | None = None) -> FastAPI:
         if body.chat_retention_days is not None and body.chat_retention_days not in (7, 30, 365):
             raise HTTPException(422, "Chat history can be kept for 7, 30 or 365 days.")
         receipts = None if body.read_receipts is None else int(body.read_receipts)
+        p_hash = body.phone_hash.strip().lower() if body.phone_hash else None
         return public_user(s.db.update_user(user["id"], display_name=body.display_name, language=body.language,
                                             username=uname, allow_calls=body.allow_calls, read_receipts=receipts,
-                                            chat_retention_days=body.chat_retention_days))  # fmt: skip
+                                            chat_retention_days=body.chat_retention_days, phone_hash=p_hash))  # fmt: skip
 
     @app.get("/v1/users/check-username", dependencies=[Depends(rate_limit("username", 60, 60))])
     def check_username(username: str, s: Services = Depends(svc)) -> dict:
-        u = username.strip()
+        u = username.strip().lstrip("@")
         if not USERNAME_RE.match(u):
-            return {"available": False, "username": u, "reason": "3-24 characters (letters, numbers, underscores)"}
-        return {"available": s.db.is_username_available(u), "username": u}
+            return {"available": False, "username": u, "reason": "3-24 characters containing only letters, numbers, and underscores."}
+        avail = s.db.is_username_available(u)
+        return {
+            "available": avail,
+            "username": u,
+            "reason": None if avail else "This username is already taken. Please choose another username."
+        }
 
     @app.get("/v1/users/search", dependencies=[Depends(rate_limit("search", 60, 60))])
     def search_users(q: str = Query(min_length=1), user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
@@ -624,6 +634,21 @@ def create_app(services: Services | None = None) -> FastAPI:
     def unblock_user(blocked_id: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
         s.db.unblock(user["id"], blocked_id)
         return {"ok": True}
+
+    class MatchPhonesIn(BaseModel):
+        phone_hashes: list[str] = Field(default_factory=list, max_length=500)
+
+    @app.post("/v1/contacts/match-phones")
+    def match_phones(body: MatchPhonesIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        hashes = [h.strip().lower() for h in body.phone_hashes if len(h.strip()) >= 16][:500]
+        matched = s.db.match_phone_hashes(hashes)
+        return {
+            "matches": [
+                {"id": u["id"], "name": u["display_name"], "username": u.get("username"),
+                 "language": u.get("language") or "ta-IN", "phone_hash": u.get("phone_hash")}
+                for u in matched if u["id"] != user["id"]
+            ]
+        }
 
     def may_call(caller: dict, callee: dict, s: Services) -> bool:
         if s.db.either_blocked(caller["id"], callee["id"]):

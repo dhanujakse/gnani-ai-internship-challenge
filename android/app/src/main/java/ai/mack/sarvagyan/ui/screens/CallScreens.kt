@@ -145,8 +145,28 @@ fun CallSetupScreen(join: Boolean, initialCode: String?, onBack: () -> Unit, onL
     var micDenied by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var route by remember { mutableStateOf(if (s.speakerOn) AudioRoute.Speaker else AudioRoute.Earpiece) }
-    val routes = remember { AudioRouter(context).available() }
+    var routes by remember { mutableStateOf(AudioRouter(context).available()) }
+    var route by remember {
+        val initial = if (s.speakerOn) AudioRoute.Speaker else AudioRoute.Earpiece
+        mutableStateOf(if (routes.contains(initial)) initial else routes.firstOrNull() ?: AudioRoute.Speaker)
+    }
+    DisposableEffect(context) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                val avail = AudioRouter(context).available()
+                routes = avail
+                if (!avail.contains(route)) {
+                    route = if (avail.contains(AudioRoute.Earpiece)) AudioRoute.Earpiece else AudioRoute.Speaker
+                }
+            }
+        }
+        try {
+            context.registerReceiver(receiver, android.content.IntentFilter(Intent.ACTION_HEADSET_PLUG))
+        } catch (_: Exception) {}
+        onDispose {
+            try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
+        }
+    }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         micGranted = ok
         micDenied = !ok
@@ -164,7 +184,7 @@ fun CallSetupScreen(join: Boolean, initialCode: String?, onBack: () -> Unit, onL
             try {
                 c.settingsStore.update { it.copy(speakerOn = route == AudioRoute.Speaker) }
                 val info = if (join) c.api.joinCall(normaliseCode(code), s.myLanguage) else c.api.createCall(s.myLanguage)
-                c.startCall(info, s.myLanguage)
+                c.startCall(info, s.myLanguage, initialRoute = route)
                 onStarted()
             } catch (e: ApiException) {
                 error = when (e.status) {

@@ -173,6 +173,8 @@ class SpeakerPipeline:
         self._stopped = False
         self._seq = 0
         self._in_speech = False
+        self._last_transcript = ""
+        self._last_transcript_time = 0.0
 
     def start(self) -> None:
         if self._task is None:
@@ -265,6 +267,12 @@ class SpeakerPipeline:
                 await self.room.send(self.speaker, {"type": "notice", "code": "unclear",
                                                     "message": "Didn't catch that — please repeat."})  # fmt: skip
                 return
+            now = time.monotonic()
+            if text == self._last_transcript and (now - self._last_transcript_time) < 1.5:
+                log.info("duplicate transcript dropped speaker=%s", self.speaker.user_id[:8])
+                return
+            self._last_transcript = text
+            self._last_transcript_time = now
             if self.speaker.echo.is_echo(text):
                 log.info("echo dropped speaker=%s", self.speaker.user_id[:8])
                 return

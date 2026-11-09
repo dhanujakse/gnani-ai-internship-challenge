@@ -166,12 +166,12 @@ class AppContainer(private val context: Context) {
         runCatching { api.declineCall(call.callId) }
     }
 
-    suspend fun startCall(info: CallInfo, myLanguage: String): CallSession {
+    suspend fun startCall(info: CallInfo, myLanguage: String, initialRoute: ai.mack.sarvagyan.call.AudioRoute? = null): CallSession {
         activeCall.value?.end(notifyServer = true)
         val session = CallSession(context, api, http, json, transcripts, info, settings.value, myLanguage)
         activeCall.value = session
         CallService.start(context)
-        session.start()
+        session.start(initialRoute)
         return session
     }
 }

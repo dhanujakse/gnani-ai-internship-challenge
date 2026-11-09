@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS message_translations (
 _COLUMNS = [
     ("users", "read_receipts", "INTEGER NOT NULL DEFAULT 1"),
     ("users", "chat_retention_days", "INTEGER NOT NULL DEFAULT 30"),
+    ("users", "phone_hash", "TEXT"),
     ("messages", "expires_at", "REAL"),
     ("messages", "deleted_at", "REAL"),
     ("conversation_members", "last_delivered_at", "REAL NOT NULL DEFAULT 0"),
@@ -148,21 +149,33 @@ class Database:
         return len(rows) == 0
 
     def search_users(self, query: str, current_user_id: str, limit: int = 25) -> list[dict]:
-        q = f"%{query.strip().lower()}%"
+        cleaned = query.strip().lstrip("@").lower()
+        q = f"%{cleaned}%"
         rows = self._exec(
             """SELECT id, display_name, username, language, is_demo FROM users
                WHERE (LOWER(username) LIKE ? OR LOWER(display_name) LIKE ?) AND id != ?
                  AND id NOT IN (SELECT blocked_id FROM blocks WHERE user_id = ?)
                  AND id NOT IN (SELECT user_id FROM blocks WHERE blocked_id = ?)
-               ORDER BY display_name ASC LIMIT ?""",
-            (q, q, current_user_id, current_user_id, current_user_id, limit),
+               ORDER BY (CASE WHEN LOWER(username) = ? THEN 0 WHEN LOWER(username) LIKE ? THEN 1 ELSE 2 END), display_name ASC LIMIT ?""",
+            (q, q, current_user_id, current_user_id, current_user_id, cleaned, f"{cleaned}%", limit),
+        )
+        return [dict(r) for r in rows]
+
+    def match_phone_hashes(self, hashes: list[str]) -> list[dict]:
+        if not hashes:
+            return []
+        placeholders = ",".join("?" for _ in hashes)
+        rows = self._exec(
+            f"""SELECT id, display_name, username, language, is_demo, phone_hash FROM users
+               WHERE phone_hash IN ({placeholders}) AND phone_hash IS NOT NULL""",
+            tuple(hashes),
         )
         return [dict(r) for r in rows]
 
     def update_user(self, uid: str, **fields: Any) -> dict | None:
         allowed = {k: v for k, v in fields.items()
                    if k in ("display_name", "language", "username", "allow_calls", "read_receipts",
-                            "chat_retention_days") and v is not None}  # fmt: skip
+                            "chat_retention_days", "phone_hash") and v is not None}  # fmt: skip
         if allowed:
             sets = ", ".join(f"{k} = ?" for k in allowed)
             self._exec(f"UPDATE users SET {sets} WHERE id = ?", (*allowed.values(), uid))

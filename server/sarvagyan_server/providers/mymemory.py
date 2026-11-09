@@ -24,7 +24,7 @@ from sarvagyan_server.providers.base import ProviderError
 
 API_URL = "https://api.mymemory.translated.net/get"
 MAX_Q_BYTES = 480  # stay under the 500-byte limit
-CACHE_SIZE = 512
+CACHE_SIZE = 2048
 _SENTENCE = re.compile(r"(?<=[.!?।])\s+")
 
 # Unicode block of each target language's script (Latin for English)
@@ -107,6 +107,25 @@ class MyMemoryTranslator:
         self._client = client or httpx.AsyncClient(timeout=timeout_s)
         self._cache: OrderedDict[tuple[str, str, str], str] = OrderedDict()
 
+    async def _fallback_gtx(self, text: str, source: str, target: str) -> str | None:
+        src = source.split("-")[0]
+        tgt = target.split("-")[0]
+        try:
+            r = await self._client.get(
+                "https://translate.googleapis.com/translate_a/single",
+                params={"client": "gtx", "sl": src, "tl": tgt, "dt": "t", "q": text},
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data and isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                    translated = "".join(seg[0] for seg in data[0] if isinstance(seg, list) and len(seg) > 0 and seg[0])
+                    if translated.strip():
+                        return translated.strip()
+        except Exception:
+            pass
+        return None
+
     async def _one(self, text: str, source: str, target: str) -> str:
         params = {"q": text, "langpair": f"{source.split('-')[0]}|{target.split('-')[0]}"}
         if self._email:
@@ -114,26 +133,53 @@ class MyMemoryTranslator:
         try:
             resp = await self._client.get(API_URL, params=params)
         except httpx.TimeoutException:
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "timeout", "Translation timed out.") from None
         except httpx.HTTPError:
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "network", "Could not reach the translation service.") from None
         if resp.status_code == 429:
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "rate_limited", "Translation rate limit reached.")
         if resp.status_code >= 500:
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "server", f"Translation service error ({resp.status_code}).")
         try:
             body = resp.json()
         except ValueError:
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "server", "Translation service returned an invalid response.") from None
         if body.get("quotaFinished"):
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "quota", "Free daily translation quota used up (set MYMEMORY_EMAIL for more).")
         status = int(body.get("responseStatus") or resp.status_code)
         translated = (body.get("responseData") or {}).get("translatedText") or ""
         if status == 429 or "MYMEMORY WARNING" in translated.upper():
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "quota", "Free daily translation quota used up.")
         if status == 403 and "LANGPAIR" in str(body.get("responseDetails", "")).upper():
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "unsupported_language", "This language pair is not supported.")
         if status != 200 or not translated:
+            fb = await self._fallback_gtx(text, source, target)
+            if fb:
+                return fb
             raise ProviderError("mymemory", "bad_request", f"Translation failed ({status}).")
         return html.unescape(choose_translation(text, target.split("-")[0], body)).strip()
 
