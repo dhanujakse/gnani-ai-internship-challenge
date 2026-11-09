@@ -25,6 +25,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from sarvagyan_server.languages import clamp_speed, get_language, voice_for
+from sarvagyan_server.credits import FRAME_S, Meter, SilenceGate, TtsCache
 from sarvagyan_server.providers.base import ProviderError, SpeechRecognizer, SpeechSynthesizer, Translator
 
 log = logging.getLogger("sarvagyan.realtime")
@@ -175,6 +176,11 @@ class SpeakerPipeline:
         self._in_speech = False
         self._last_transcript = ""
         self._last_transcript_time = 0.0
+        # credits: only speech goes to recognition; the stream closes after a long silence and reopens on speech
+        self._gate = SilenceGate() if room.gate_enabled else None
+        self._wake = asyncio.Event()
+        self._idle_closed = False
+        self._budget_noticed = False
 
     def start(self) -> None:
         if self._task is None:
@@ -183,10 +189,20 @@ class SpeakerPipeline:
     def feed(self, frame: bytes) -> None:
         if self.speaker.muted or self._stopped:
             return
-        if self._frames.full():
-            with contextlib.suppress(asyncio.QueueEmpty):
-                self._frames.get_nowait()  # drop oldest: stay real-time
-        self._frames.put_nowait(frame)
+        if self._gate is not None:
+            before = self._gate.skipped
+            frames = self._gate.push(frame)
+            if self._gate.skipped > before:
+                self.room.meter_add(self.speaker.user_id, "stt_skipped_s", FRAME_S)
+        else:
+            frames = [frame]
+        for f in frames:
+            if self._frames.full():
+                with contextlib.suppress(asyncio.QueueEmpty):
+                    self._frames.get_nowait()  # drop oldest: stay real-time
+            self._frames.put_nowait(f)
+        if frames:
+            self._wake.set()
 
     async def set_language(self) -> None:
         if self._session is not None:
@@ -209,19 +225,45 @@ class SpeakerPipeline:
         await self.room.broadcast({"type": "pipeline", "speaker_id": self.speaker.user_id, "stt": state, "message": message})
 
     async def _pump(self, session: Any) -> None:
+        uid = self.speaker.user_id
         while True:
-            frame = await self._frames.get()
+            try:
+                frame = await asyncio.wait_for(self._frames.get(), self.room.idle_close_s if self.room.idle_close_s > 0 else None)
+            except TimeoutError:
+                if self._in_speech:
+                    continue
+                # a long silence: close the paid stream; _run reopens it when speech comes back
+                self._idle_closed = True
+                log.info("stt idle close speaker=%s", uid[:8])
+                with contextlib.suppress(Exception):
+                    await session.close()
+                return
+            if not self.room.stt_allowed(uid):
+                if not self._budget_noticed:
+                    self._budget_noticed = True
+                    await self.room.error(self.speaker, "stt", ProviderError(
+                        "server", "quota", "Daily speech limit reached for this account. Subtitles pause until tomorrow."))
+                continue
             await session.send_audio(frame)
+            self.room.meter_add(uid, "stt_s", len(frame) / 2 / SAMPLE_RATE)
 
     async def _run(self) -> None:
         backoff = 1.0
         while not self._stopped:
             pump: asyncio.Task | None = None
+            quiet = self._idle_closed  # reopening after a silence: the user saw no outage, so no status change
+            if quiet:  # wait for speech, then reopen
+                self._wake.clear()
+                if self._frames.empty():
+                    await self._wake.wait()
+                self._idle_closed = False
             try:
-                await self._status("connecting")
+                if not quiet:
+                    await self._status("connecting")
                 lang = None if self.speaker.auto_detect else self.speaker.language
                 self._session = await self.room.recognizer.open(lang, SAMPLE_RATE)
-                await self._status("ready")
+                if not quiet:
+                    await self._status("ready")
                 backoff = 1.0
                 opened = time.monotonic()
                 pump = asyncio.create_task(self._pump(self._session))
@@ -249,6 +291,8 @@ class SpeakerPipeline:
                     self._session = None
             if self._stopped:
                 return
+            if self._idle_closed:
+                continue
             await self._status("reconnecting")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 15.0)
@@ -295,6 +339,12 @@ class SpeakerPipeline:
             task.add_done_callback(self._tasks.discard)
 
 
+async def _replay(chunks: list[bytes]):
+    for c in chunks:
+        yield c
+        await asyncio.sleep(0)
+
+
 def _supported() -> set[str]:
     from sarvagyan_server.languages import BY_CODE
 
@@ -338,18 +388,38 @@ class PlaybackDispatcher:
             await self.room.update(utt, "skipped")
             return
         target = utt.target_lang or lis.language
+        voice = voice_for(target, lis.voice)
+        cache, key = self.room.tts_cache, None
+        cached = None
+        if cache is not None and cache.cacheable(utt.translation):
+            key = TtsCache.key(utt.translation, target, voice, lis.speed)
+            cached = cache.get(key)
+        # voice budget (per listener and server-wide): when it runs out the call carries on with subtitles only
+        if cached is None and not self.room.tts_allowed(lis.user_id, len(utt.translation)):
+            utt.error = "Daily translated-voice limit reached; subtitle shown."
+            await self.room.update(utt, "skipped")
+            return
         await self.room.update(utt, "speaking")
         await self.room.send(lis, {"type": "tts_start", "id": utt.id, "sample_rate": SAMPLE_RATE})
         t0 = time.monotonic()
         total = 0
         ok = True
+        keep: list[bytes] = []
         try:
-            async for chunk in self.room.synthesizer.synthesize(utt.translation, target, voice_for(target, lis.voice),
-                                                                lis.speed, SAMPLE_RATE):  # fmt: skip
+            if cached is not None:  # paid for once already
+                source = _replay(cached)
+                self.room.meter_add(lis.user_id, "tts_cached_chars", len(utt.translation))
+                utt.metrics["tts_cached"] = 1
+            else:
+                source = self.room.synthesizer.synthesize(utt.translation, target, voice, lis.speed, SAMPLE_RATE)
+                self.room.meter_add(lis.user_id, "tts_chars", len(utt.translation))
+            async for chunk in source:
                 if total == 0:
                     utt.metrics["tts_first_ms"] = int((time.monotonic() - t0) * 1000)
                     utt.metrics["server_total_ms"] = int((time.monotonic() - utt.t_final) * 1000)
                 total += len(chunk)
+                if key is not None and cached is None:
+                    keep.append(chunk)
                 await self.room.send(lis, chunk)
         except ProviderError as exc:
             ok = False
@@ -357,6 +427,8 @@ class PlaybackDispatcher:
             await self.room.error(lis, "tts", exc, notify_peer=False)
         finally:
             await self.room.send(lis, {"type": "tts_end", "id": utt.id, "ok": ok})
+        if ok and key is not None and cached is None and keep:
+            cache.put(key, keep)
         lis.echo.register(utt.translation)  # the listener's mic may pick this up
         utt.metrics["tts_total_ms"] = int((time.monotonic() - t0) * 1000)
         utt.metrics["audio_ms"] = int(total / 2 / SAMPLE_RATE * 1000)
@@ -367,8 +439,13 @@ class CallRoom:
     def __init__(self, call_id: str, recognizer: SpeechRecognizer, translator: Translator,
                  synthesizer_factory: Callable[[], SpeechSynthesizer],
                  on_started: Callable[[str], None] | None = None, quota: Callable[[str], bool] | None = None,
-                 on_empty: Callable[[], Awaitable[None]] | None = None) -> None:  # fmt: skip
+                 on_empty: Callable[[], Awaitable[None]] | None = None, meter: Meter | None = None,
+                 tts_cache: TtsCache | None = None, gate: bool = False, idle_close_s: float = 0.0) -> None:  # fmt: skip
         self.call_id = call_id
+        self.meter = meter
+        self.tts_cache = tts_cache
+        self.gate_enabled = gate
+        self.idle_close_s = idle_close_s
         self.recognizer = recognizer
         self.translator = translator
         self._synth_factory = synthesizer_factory
@@ -511,6 +588,17 @@ class CallRoom:
         else:
             await self.send(part, event)
 
+    # credits -------------------------------------------------------------------------------
+    def meter_add(self, user_id: str, kind: str, amount: float) -> None:
+        if self.meter is not None:
+            self.meter.add(user_id, kind, amount)
+
+    def stt_allowed(self, user_id: str) -> bool:
+        return self.meter.stt_allowed(user_id) if self.meter is not None else True
+
+    def tts_allowed(self, user_id: str, chars: int) -> bool:
+        return self.meter.tts_allowed(user_id, chars) if self.meter is not None else True
+
     # utterances --------------------------------------------------------------------------
     def allow_utterance(self, user_id: str) -> bool:
         return self._quota(user_id) if self._quota else True
@@ -543,6 +631,7 @@ class CallRoom:
             await self.update(utt, "done")
             return
         await self.update(utt, "translating")
+        self.meter_add(utt.speaker_id, "mt_chars", len(utt.original))
         t0 = time.monotonic()
         try:
             utt.translation = await asyncio.wait_for(

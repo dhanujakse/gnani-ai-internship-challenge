@@ -141,3 +141,23 @@ never stored. Processing takes about the recording's length plus a few seconds, 
 - Prisma has no partial transcripts: text appears when the speaker pauses (VAD), not word by word.
 - Calls are inside Sarvagyan only; Android does not allow capturing other apps' or cellular call audio.
 - No push notifications yet: the other person joins with the invite code (no ringing).
+
+## Spending API credit carefully
+
+`server/sarvagyan_server/credits.py`, wired into the call pipeline (`realtime.py`):
+
+1. **Silence gate (speech recognition).** Each 32 ms mic frame is measured; only speech is sent to Gnani, with
+   0.32 s of lead-in (so the first word isn't cut) and 0.8 s of tail (so Gnani can tell the sentence ended). The
+   threshold follows the room's background noise. All-zero frames (the app's echo gate while a translation plays)
+   never open it. On the test recordings with conversation-like pauses it sent 23–32 % of the audio and lost no
+   speech frames; not yet measured on real phones.
+2. **Idle close.** After `STT_IDLE_CLOSE_S` (20 s) of silence the Gnani stream is closed and reopened on the next
+   speech, without telling the client (no "reconnecting").
+3. **Voice cache.** Generated audio for short phrases (≤ 60 characters) is kept in memory (LRU, `TTS_CACHE_MB`), so
+   "Hello", "Okay", "Yes" are paid for once.
+4. **Budgets.** Per user per day: minutes sent to recognition and characters of translated voice. When the voice
+   budget (per user or server-wide) runs out, calls continue with subtitles only; when the recognition budget runs
+   out, the user is told and subtitles pause until tomorrow.
+5. **Usage report.** `GET /v1/admin/usage` (header `X-Admin-Token`, off unless `ADMIN_TOKEN` is set): today's
+   seconds/characters per API, the share of audio the gate saved and the voice-cache hit share. User ids are
+   shortened; no conversation content. Counts are in memory and reset when the server restarts.

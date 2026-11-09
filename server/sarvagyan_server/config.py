@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     data_dir: str = "server/data"
     daily_utterance_cap: int = 5000  # generous cap per user, protects shared API credits
     daily_voicemail_cap: int = 30  # voicemails sent per user per day
+    # spending the paid speech APIs carefully (credits.py); 0 = no limit
+    stt_silence_gate: bool = True  # send only speech (plus a short lead-in and tail) to speech recognition
+    stt_idle_close_s: float = 20.0  # close the recognition stream after this much silence; reopen on speech
+    daily_stt_minutes_per_user: float = 120  # minutes of audio sent to speech recognition per user per day
+    daily_tts_chars_per_user: int = 30000  # characters of translated voice per user per day (then subtitles only)
+    daily_server_stt_minutes: float = 0  # whole server, per day
+    daily_server_tts_chars: int = 0  # whole server, per day (then subtitles only)
+    tts_cache_mb: int = 32  # in-memory cache of generated voice for short repeated phrases
+    admin_token: SecretStr = SecretStr("")  # enables GET /v1/admin/usage (header X-Admin-Token)
     chat_retention_days: int = 30  # chat messages and voice clips are deleted after this
     trust_proxy_headers: bool = False  # true only behind Cloudflare: use CF-Connecting-IP for rate limits
     log_level: str = "INFO"

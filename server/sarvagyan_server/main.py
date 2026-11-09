@@ -20,6 +20,7 @@ WebSocket:  /v1/calls/{call_id}/ws   (Authorization: Bearer <token>)
 
 import asyncio
 import contextlib
+import hmac
 import json
 import logging
 import re
@@ -44,6 +45,7 @@ from sarvagyan_server.providers.gnani_stt import GnaniRecognizer
 from sarvagyan_server.providers.base import ProviderError
 from sarvagyan_server.providers.gnani_tts import GnaniSynthesizer
 from sarvagyan_server.providers.mymemory import MyMemoryTranslator
+from sarvagyan_server.credits import Meter, TtsCache
 from sarvagyan_server.realtime import CallRoom, Participant
 from sarvagyan_server import voicemail as vm
 from sarvagyan_server.ratelimit import RateLimiter
@@ -77,6 +79,8 @@ class Services:
         self.calls: dict[str, dict] = {}  # call_id -> {code, host, participants{uid: language}, created}
         self.by_code: dict[str, str] = {}
         self._usage: dict[tuple[str, str], int] = defaultdict(int)
+        self.meter = Meter(settings)  # what the paid speech APIs were used for today (credits.py)
+        self.tts_cache = TtsCache(max(0, settings.tts_cache_mb) * 1024 * 1024)
         self.chat_audio_dir = self.settings.data_path / "chat_audio"
         self.chat_audio_dir.mkdir(parents=True, exist_ok=True)
         self.chat_sockets: dict[str, set[WebSocket]] = defaultdict(set)
@@ -240,7 +244,9 @@ class Services:
         if call_id not in self.rooms:
             self.rooms[call_id] = CallRoom(call_id, self.recognizer, self.translator, self.synthesizer_factory,
                                            on_started=self.db.mark_started, quota=self.quota,
-                                           on_empty=lambda: self.end_room(call_id))  # fmt: skip
+                                           on_empty=lambda: self.end_room(call_id), meter=self.meter,
+                                           tts_cache=self.tts_cache, gate=self.settings.stt_silence_gate,
+                                           idle_close_s=self.settings.stt_idle_close_s)  # fmt: skip
         return self.rooms[call_id]
 
     async def end_room(self, call_id: str) -> None:
@@ -505,6 +511,14 @@ def create_app(services: Services | None = None) -> FastAPI:
         return {"users": s.db.search_users(q, current_user_id=user["id"])}
 
     # --- config -------------------------------------------------------------------------
+    @app.get("/v1/admin/usage")
+    def admin_usage(x_admin_token: str = Header(default=""), s: Services = Depends(svc)) -> dict:
+        """Today's use of the paid speech APIs (no conversation content). Off unless ADMIN_TOKEN is set."""
+        want = s.settings.admin_token.get_secret_value()
+        if not want or not hmac.compare_digest(x_admin_token.encode(), want.encode()):
+            raise HTTPException(401, "Admin token required.")
+        return s.meter.report()
+
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok", "version": __version__}

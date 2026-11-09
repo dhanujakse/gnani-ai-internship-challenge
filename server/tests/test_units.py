@@ -97,6 +97,13 @@ class _Room:
     def __init__(self) -> None:
         self.synthesizer = FakeSynth()
         self.events: list = []
+        self.tts_cache = None
+
+    def meter_add(self, *a) -> None:
+        pass
+
+    def tts_allowed(self, *a) -> bool:
+        return True
 
     async def update(self, utt, stage):
         utt.stage = stage
