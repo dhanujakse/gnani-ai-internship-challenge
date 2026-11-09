@@ -247,6 +247,10 @@ fun AuthScreen(onSignedIn: () -> Unit) {
     var showServer by remember { mutableStateOf(false) }
     var server by remember { mutableStateOf(c.settings.value.serverUrl) }
 
+    LaunchedEffect(server) {
+        c.refreshLanguages()
+    }
+
     LaunchedEffect(username) {
         val u = username.trim().removePrefix("@")
         if (u.isEmpty()) {

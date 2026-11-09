@@ -105,6 +105,14 @@ data class Diagnostics(val raw: JsonObject)
 val FallbackLanguages = listOf(
     Language("ta-IN", "Tamil", "தமிழ்", listOf("Trisha", "Asmita", "Brinda", "Vedika", "Noopur")),
     Language("en-IN", "English", "English", listOf("Kaveri", "Pranav", "Trupti", "Devika", "Shlok", "Girish")),
+    Language("hi-IN", "Hindi", "हिन्दी", listOf("Nalini", "Deepak", "Bhavna", "Chitra", "Roopesh", "Urmila")),
+    Language("te-IN", "Telugu", "తెలుగు", listOf("Lavanya", "Suhana", "Lehara")),
+    Language("kn-IN", "Kannada", "ಕನ್ನಡ", listOf("Kavin", "Saanvi")),
+    Language("ml-IN", "Malayalam", "മലയാളം", listOf("Reshma", "Riyaan")),
+    Language("mr-IN", "Marathi", "मराठी", listOf("Ishaan")),
+    Language("bn-IN", "Bengali", "বাংলা", listOf("Kirra", "Dhruva")),
+    Language("gu-IN", "Gujarati", "ગુજરાતી", listOf("Falak")),
+    Language("pa-IN", "Punjabi", "ਪੰਜਾਬੀ", listOf("Mehuli")),
 )
 
 /** Same rules as the server: uppercase, letters and digits only ("abc-234" -> "ABC234"). */
