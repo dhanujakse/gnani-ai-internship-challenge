@@ -205,9 +205,24 @@ class SpeakerPipeline:
             self._wake.set()
 
     async def set_language(self) -> None:
+        t0 = time.monotonic()
+        # Flush unfinished audio frames buffer so stale speech is not recognized in new language
+        flushed = 0
+        while not self._frames.empty():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                self._frames.get_nowait()
+                flushed += 1
+        lang = None if self.speaker.auto_detect else self.speaker.language
         if self._session is not None:
             with contextlib.suppress(Exception):
-                await self._session.update_language(None if self.speaker.auto_detect else self.speaker.language)
+                await self._session.update_language(lang)
+            old_sess = self._session
+            self._session = None
+            with contextlib.suppress(Exception):
+                await old_sess.close()
+        gap_ms = int((time.monotonic() - t0) * 1000)
+        log.info("reconfigured STT stream for speaker=%s new_lang=%s flushed_frames=%d gap=%dms",
+                 self.speaker.user_id[:8], self.speaker.language, flushed, gap_ms)
 
     async def stop(self) -> None:
         self._stopped = True

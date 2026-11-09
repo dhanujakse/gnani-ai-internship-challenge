@@ -155,7 +155,8 @@ data class UserSearchResult(
     val id: String,
     @SerialName("display_name") val displayName: String,
     val username: String? = null,
-    val language: String = "ta-IN",
+    val avatar: String? = null,
+    val language: String = "en-IN",
     @SerialName("is_demo") val isDemo: Boolean = false,
 )
 

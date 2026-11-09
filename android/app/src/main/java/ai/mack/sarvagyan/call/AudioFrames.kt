@@ -104,17 +104,68 @@ class EchoGate(private val tailMs: Long = 350) {
     fun allowMic(nowMs: Long): Boolean = !playing && nowMs - lastPlayEndMs >= tailMs
 }
 
-/** Converts whatever the recorder delivers into 1,024-byte 16 kHz frames, applying mute and the echo gate. */
-class MicPipeline(private val gate: EchoGate, private val clock: () -> Long, private val send: (ByteArray) -> Unit) {
+/** Converts whatever the recorder delivers into 1,024-byte 16 kHz frames, applying mute, noise reduction/VAD and the echo gate. */
+class MicPipeline(
+    private val gate: EchoGate,
+    private val clock: () -> Long,
+    var noiseReduction: Boolean = true,
+    private val energyThreshold: Double = 350.0,
+    private val minSpeechMs: Long = 200L,
+    private val hangoverMs: Long = 350L,
+    private val send: (ByteArray) -> Unit,
+) {
     @Volatile var muted = false
     @Volatile var enabled = true
     private val framer = Framer(FRAME_BYTES) { send(it) }
+
+    private var speechStartMs = -1L
+    private var lastSpeechMs = -1L
+
+    private fun rms(samples: ShortArray): Double {
+        if (samples.isEmpty()) return 0.0
+        var sum = 0.0
+        for (s in samples) {
+            val v = s.toDouble()
+            sum += v * v
+        }
+        return kotlin.math.sqrt(sum / samples.size)
+    }
 
     fun onSamples(data: ByteArray, sampleRate: Int, channels: Int) {
         if (!enabled || muted) return
         val mono = Pcm.toMono(Pcm.bytesToShorts(data), channels)
         val pcm = Pcm.resample(mono, sampleRate)
-        val bytes = if (gate.allowMic(clock())) Pcm.shortsToBytes(pcm) else ByteArray(pcm.size * 2) // keep cadence: silence
+        val now = clock()
+
+        var passSpeech = true
+        if (noiseReduction) {
+            val level = rms(pcm)
+            if (level >= energyThreshold) {
+                if (speechStartMs < 0) {
+                    speechStartMs = now
+                }
+                val duration = now - speechStartMs
+                if (duration >= minSpeechMs) {
+                    lastSpeechMs = now
+                    passSpeech = true
+                } else {
+                    passSpeech = false
+                }
+            } else {
+                speechStartMs = -1L
+                if (lastSpeechMs > 0 && now - lastSpeechMs < hangoverMs) {
+                    passSpeech = true
+                } else {
+                    passSpeech = false
+                }
+            }
+        }
+
+        val bytes = if (gate.allowMic(now) && passSpeech) {
+            Pcm.shortsToBytes(pcm)
+        } else {
+            ByteArray(pcm.size * 2) // keep cadence: silence
+        }
         framer.feed(bytes)
     }
 }

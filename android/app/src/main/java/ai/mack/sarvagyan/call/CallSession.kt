@@ -93,7 +93,7 @@ class CallSession(
         gate.setPlaying(id != null, System.currentTimeMillis())
         _state.update { it.copy(conversation = it.conversation.withPlaying(id)) }
     }
-    private val mic = MicPipeline(gate, System::currentTimeMillis) { frame ->
+    private val mic = MicPipeline(gate, System::currentTimeMillis, noiseReduction = settings.noiseReduction) { frame ->
         if (socket.sendAudio(frame) && !_state.value.micStreaming) _state.update { it.copy(micStreaming = true) }
     }
     private var rtc: WebRtcEngine? = null
