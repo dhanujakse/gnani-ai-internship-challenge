@@ -127,6 +127,11 @@ class MyMemoryTranslator:
         return None
 
     async def _one(self, text: str, source: str, target: str) -> str:
+        # Prefer Google Translate GTX first to avoid crowdsourced vandalism in MyMemory
+        gtx_res = await self._fallback_gtx(text, source, target)
+        if gtx_res:
+            return gtx_res
+
         params = {"q": text, "langpair": f"{source.split('-')[0]}|{target.split('-')[0]}"}
         if self._email:
             params["de"] = self._email
