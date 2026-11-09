@@ -6,9 +6,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Backend address. Default set to your PC's Wi-Fi network address so physical phones connect directly.
+// Backend address. Default set to Render cloud server so physical phones connect immediately.
 // Override without editing code:  ./gradlew assembleDebug -PserverUrl=https://your-server.example
-val serverUrl: String = (project.findProperty("serverUrl") as String?) ?: "http://10.0.2.2:8787"
+val serverUrl: String = (project.findProperty("serverUrl") as String?) ?: "https://sarvagyan-server.onrender.com"
 // shown in the in-app privacy policy:  -PprivacyContact=privacy@your-domain
 val privacyContact: String = (project.findProperty("privacyContact") as String?) ?: ""
 
