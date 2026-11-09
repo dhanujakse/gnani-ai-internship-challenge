@@ -1,7 +1,7 @@
 import pathlib
 import tempfile
 import pytest
-from starlette.testclient import TestClient
+from fastapi.testclient import TestClient
 
 from sarvagyan_server.config import Settings
 from sarvagyan_server.db import Database
