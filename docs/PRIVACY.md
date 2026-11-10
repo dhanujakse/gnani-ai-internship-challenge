@@ -33,6 +33,7 @@ To translate, the words you speak or type are sent, without your name or account
 
 - **Gnani.ai** (speech recognition and the translated voice), in India
 - **MyMemory / Translated** (text translation), in Italy
+- **Google Firebase Cloud Messaging** (wakes your phone for an incoming call when the app is closed). It carries only the call id, the caller's name, username and language, never what is said.
 
 They process the text and audio to return a result. Their own privacy terms apply to that processing.
 Calls' original voices travel directly between the two phones, encrypted (WebRTC), and may pass through a relay

@@ -25,6 +25,8 @@ services:
         sync: false
       - key: MYMEMORY_EMAIL
         sync: false
+      - key: FCM_SERVICE_ACCOUNT  # Firebase service-account key (JSON or base64): incoming calls ring when the app is closed
+        sync: false
       - key: TURN_URLS  # optional relay for mobile data, e.g. a free metered.ca plan; leave empty to skip
         sync: false
       - key: TURN_USERNAME

@@ -77,8 +77,34 @@ class Ringer(private val context: Context) {
         runCatching { nm.notify(NOTIFICATION_ID, n) }
     }
 
+    /** "Missed call from X": stays in the notification shade; tapping it opens the app (call back from Recent calls). */
+    fun notifyMissed(callerName: String) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(NotificationChannel(MISSED_CHANNEL, "Missed calls", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Tells you about Sarvagyan calls you didn't answer"
+        })
+        val open = PendingIntent.getActivity(
+            context, 2, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        val n = NotificationCompat.Builder(context, MISSED_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_call)
+            .setContentTitle("Missed call")
+            .setContentText("$callerName called you on Sarvagyan. Open the app to call back.")
+            .setCategory(NotificationCompat.CATEGORY_MISSED_CALL)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        runCatching { nm.notify(MISSED_ID_BASE + (callerName.hashCode() and 0xffff), n) }
+    }
+
     companion object {
         private const val CHANNEL = "incoming_calls"
+        private const val MISSED_CHANNEL = "missed_calls"
+        private const val MISSED_ID_BASE = 1000
         private const val NOTIFICATION_ID = 42
     }
 }

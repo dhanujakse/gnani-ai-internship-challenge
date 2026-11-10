@@ -3,6 +3,8 @@ import pathlib
 import re
 import tempfile
 import pytest
+
+from sarvagyan_server.security import seal_phone_hash
 from fastapi.testclient import TestClient
 
 from sarvagyan_server.config import Settings
@@ -72,7 +74,7 @@ def test_contact_sync_375_contacts(contact_test_setup):
         p_hash = sha256_hex(phone_e164)
         registered_numbers.append(phone_e164)
         u = db.create_user(f"Friend {i}", f"friend{i}@example.com", "h", False, username=f"friend_{i}")
-        db.update_user(u["id"], phone_hash=p_hash)
+        db.update_user(u["id"], phone_hash=seal_phone_hash(p_hash, b"test-secret-value"))  # stored sealed, as the API does
         registered_uids.append(u["id"])
 
     # Generate 375 total contacts from phone

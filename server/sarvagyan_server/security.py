@@ -95,3 +95,16 @@ def new_invite_code(length: int = 6) -> str:
 
 def normalise_invite_code(code: str) -> str:
     return "".join(ch for ch in code.upper() if ch.isalnum())
+
+
+PHONE_HASH_LEN = 64  # the app sends SHA-256 (hex) of the number in E.164 form, never the number itself
+
+
+def seal_phone_hash(client_hash: str, key: bytes) -> str | None:
+    """Phone numbers are few enough that a plain SHA-256 can be reversed by trying them all, so the server keeps
+    only an HMAC of the app's hash under its own secret: a copied database can't be turned back into numbers.
+    Returns None for anything that isn't a 64-character hex hash."""
+    h = (client_hash or "").strip().lower()
+    if len(h) != PHONE_HASH_LEN or any(ch not in "0123456789abcdef" for ch in h):
+        return None
+    return hmac.new(key, b"phone:" + h.encode(), hashlib.sha256).hexdigest()

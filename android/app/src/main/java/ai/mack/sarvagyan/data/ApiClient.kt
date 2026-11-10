@@ -166,9 +166,15 @@ class ApiClient(
     suspend fun me(): User = request("GET", "/v1/me", null, User.serializer())
     suspend fun updateMe(
         name: String? = null, language: String? = null, username: String? = null, allowCalls: String? = null,
-        readReceipts: Boolean? = null, chatRetentionDays: Int? = null,
+        readReceipts: Boolean? = null, chatRetentionDays: Int? = null, phoneHash: String? = null,
     ): User = request("PATCH", "/v1/me", obj("display_name" to name, "language" to language, "username" to username,
-        "allow_calls" to allowCalls, "read_receipts" to readReceipts, "chat_retention_days" to chatRetentionDays), User.serializer())
+        "allow_calls" to allowCalls, "read_receipts" to readReceipts, "chat_retention_days" to chatRetentionDays,
+        "phone_hash" to phoneHash), User.serializer())
+
+    /** Where the server can wake this phone for incoming calls (Firebase push token). */
+    suspend fun registerPushToken(token: String) {
+        request("POST", "/v1/me/push-token", obj("token" to token, "platform" to "android"), JsonObject.serializer())
+    }
 
     /** Delete a chat message for me (hidden on my phones) or for everyone (sender only). */
     suspend fun deleteChatMessage(id: String, forEveryone: Boolean) {

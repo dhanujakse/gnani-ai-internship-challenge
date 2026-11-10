@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS call_participants (
 CREATE TABLE IF NOT EXISTS favourites (
     user_id TEXT NOT NULL, contact_id TEXT NOT NULL, created_at REAL NOT NULL, PRIMARY KEY (user_id, contact_id)
 );
+CREATE TABLE IF NOT EXISTS push_tokens (
+    token TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT, platform TEXT NOT NULL, updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS push_tokens_user ON push_tokens(user_id);
 CREATE TABLE IF NOT EXISTS voicemails (
     id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, recipient_id TEXT NOT NULL, source_lang TEXT NOT NULL,
     target_lang TEXT NOT NULL, status TEXT NOT NULL, original TEXT, translation TEXT, error TEXT,
@@ -213,13 +217,18 @@ class Database:
         self._exec("UPDATE calls SET status = 'active', started_at = COALESCE(started_at, ?) WHERE id = ?",
                    (time.time(), call_id))  # fmt: skip
 
+    def mark_unanswered(self, call_id: str, status: str) -> None:
+        """A ringing call that never connected: 'missed' (no answer, or the caller gave up) or 'declined'."""
+        self._exec("UPDATE calls SET status = ?, ended_at = ? WHERE id = ? AND status != 'ended'", (status, time.time(), call_id))
+
     def mark_ended(self, call_id: str, utterances: int) -> None:
-        self._exec("UPDATE calls SET status = 'ended', ended_at = ?, utterances = ? WHERE id = ? AND status != 'ended'",
+        self._exec("UPDATE calls SET status = 'ended', ended_at = ?, utterances = ? WHERE id = ? "
+                   "AND status NOT IN ('ended', 'missed', 'declined')",
                    (time.time(), utterances, call_id))  # fmt: skip
 
     def history(self, user_id: str, limit: int = 30) -> list[dict]:
         rows = self._exec(
-            """SELECT c.id, c.status, c.created_at, c.started_at, c.ended_at, c.utterances,
+            """SELECT c.id, c.status, c.host_id, c.created_at, c.started_at, c.ended_at, c.utterances,
                       me.language AS my_language, other.user_id AS peer_id, other.language AS peer_language,
                       u.display_name AS peer_name, u.is_demo AS peer_is_demo
                FROM calls c
@@ -560,6 +569,18 @@ class Database:
 
     def revoke_session(self, sid: str) -> None:
         self._exec("UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ?", (time.time(), sid))
+        self._exec("DELETE FROM push_tokens WHERE session_id = ?", (sid,))   # a signed-out phone stops ringing
+
+    # push tokens (Firebase): where to wake a phone for incoming calls; tied to the sign-in session
+    def set_push_token(self, token: str, user_id: str, session_id: str | None, platform: str) -> None:
+        self._exec("INSERT OR REPLACE INTO push_tokens (token, user_id, session_id, platform, updated_at) VALUES (?,?,?,?,?)",
+                   (token, user_id, session_id, platform, time.time()))  # fmt: skip
+
+    def push_tokens(self, user_id: str) -> list[str]:
+        return [r["token"] for r in self._exec("SELECT token FROM push_tokens WHERE user_id = ?", (user_id,))]
+
+    def delete_push_token(self, token: str) -> None:
+        self._exec("DELETE FROM push_tokens WHERE token = ?", (token,))
 
     def revoke_other_sessions(self, user_id: str, keep_sid: str | None) -> int:
         rows = self._exec("SELECT id FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND id != ?",
@@ -638,6 +659,7 @@ class Database:
         self._exec("DELETE FROM blocks WHERE user_id = ? OR blocked_id = ?", (uid, uid))
         self._exec("DELETE FROM favourites WHERE user_id = ? OR contact_id = ?", (uid, uid))
         self._exec("DELETE FROM call_participants WHERE user_id = ?", (uid,))
+        self._exec("DELETE FROM push_tokens WHERE user_id = ?", (uid,))
         self._exec("DELETE FROM calls WHERE id NOT IN (SELECT call_id FROM call_participants)")
         self._exec("DELETE FROM sessions WHERE user_id = ?", (uid,))
         self._exec("DELETE FROM users WHERE id = ?", (uid,))

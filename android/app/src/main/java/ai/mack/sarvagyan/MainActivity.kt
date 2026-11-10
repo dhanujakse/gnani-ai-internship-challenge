@@ -1,6 +1,7 @@
 package ai.mack.sarvagyan
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.WindowManager
@@ -58,13 +59,21 @@ class MainActivity : FragmentActivity() { // FragmentActivity: needed by the fin
                 if (settings.blockScreenshots) window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             }
-            LaunchedEffect(locked.value) { if (locked.value) unlock() }
+            // a call that is ringing or in progress: show it over the phone's lock screen (and wake the screen),
+            // and keep the app lock out of its way; both go back to normal when the call is over
+            val incoming by container.incomingCall.collectAsStateWithLifecycle()
+            val session by container.activeCall.collectAsStateWithLifecycle()
+            val callState = session?.state?.collectAsStateWithLifecycle()?.value
+            val inCall = incoming != null || (callState != null && callState.status != ai.mack.sarvagyan.call.CallStatus.Ended &&
+                callState.status != ai.mack.sarvagyan.call.CallStatus.Failed)
+            LaunchedEffect(inCall) { showOverLockScreen(inCall) }
+            LaunchedEffect(locked.value, inCall) { if (locked.value && !inCall) unlock() }
             SarvagyanTheme(mode = settings.theme) {
                 // Surface provides the theme's content colour, so every Text defaults to readable colours
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Box(Modifier.fillMaxSize()) {
                         AppNav(rememberNavController(), pendingJoin.value, onJoinCodeConsumed = { pendingJoin.value = null })
-                        if (locked.value) LockScreen(onUnlock = { unlock() })
+                        if (locked.value && !inCall) LockScreen(onUnlock = { unlock() })
                     }
                 }
             }
@@ -72,6 +81,15 @@ class MainActivity : FragmentActivity() { // FragmentActivity: needed by the fin
     }
 
     private fun unlock() = AppLock.prompt(this) { locked.value = false }
+
+    private fun showOverLockScreen(on: Boolean) {
+        if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(on); setTurnScreenOn(on) }
+        else {
+            @Suppress("DEPRECATION")
+            val flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            if (on) window.addFlags(flags) else window.clearFlags(flags)
+        }
+    }
 
     override fun onStop() {
         super.onStop()

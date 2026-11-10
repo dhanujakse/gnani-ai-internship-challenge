@@ -234,6 +234,8 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.height(16.dp))
+                CallPermissionsCard()   // asks once for notifications + microphone; stays while calls can't reach this phone
+                Spacer(Modifier.height(12.dp))
 
         if (active != null && activeState != null && activeState.status != CallStatus.Ended && activeState.status != CallStatus.Failed) {
             AppCard(Modifier.clickable(role = Role.Button, onClick = onResumeCall)) {
@@ -342,7 +344,8 @@ fun HomeScreen(
             history!!.isEmpty() -> EmptyState(Icons.Filled.History, "No calls yet", "Your translated calls will appear here.")
             else -> history!!.take(15).forEach { h -> HistoryRow(h, onStar = { on ->
                 h.peer?.let { p -> scope.launch { runCatching { c.api.setFavourite(p.id, on) }; load() } }
-            }, onVoicemail = { p -> onRecordVoicemail(p.id, p.name ?: "") }) }
+            }, onVoicemail = { p -> onRecordVoicemail(p.id, p.name ?: "") },
+                onCallBack = { p -> placeCall(p.id, p.name ?: "") }) }
         }
             Spacer(Modifier.height(24.dp))
         }
@@ -368,20 +371,33 @@ private fun ContactRow(
 }
 
 @Composable
-private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (Peer) -> Unit) {
+private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (Peer) -> Unit, onCallBack: (Peer) -> Unit) {
     val peer = h.peer
+    val unanswered = h.status == "missed" || h.status == "declined"
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Avatar(peer?.name ?: "–", LocalCallColors.current.peer, 40.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(peer?.name ?: "Nobody joined", style = MaterialTheme.typography.titleMedium)
+            Text(peer?.name ?: "Nobody joined", style = MaterialTheme.typography.titleMedium,
+                color = if (h.missedByMe) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             val meta = buildList {
+                when {
+                    h.missedByMe -> add("Missed call")
+                    h.status == "declined" -> add(if (h.direction == "incoming") "You declined" else "Declined")
+                    h.status == "missed" -> add("No answer")
+                    h.direction == "incoming" -> add("Incoming")
+                    h.direction == "outgoing" -> add("Outgoing")
+                }
                 add(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date((h.createdAt * 1000).toLong())))
-                h.durationS?.let { add(formatDuration(it.toLong())) }
+                if (!unanswered) h.durationS?.let { add(formatDuration(it.toLong())) }
                 if (h.utterances > 0) add("${h.utterances} translated")
                 if (peer?.isDemo == true) add("demo")
             }.joinToString(" · ")
             Text(meta, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (peer != null) IconButton(onClick = { onCallBack(peer) }) {
+            Icon(Icons.Filled.Call, contentDescription = "Call ${peer.name ?: "them"} back",
+                tint = if (h.missedByMe) MaterialTheme.colorScheme.error else LocalCallColors.current.success)
         }
         if (peer != null) IconButton(onClick = { onVoicemail(peer) }) {
             Icon(Icons.Filled.Voicemail, contentDescription = "Leave ${peer.name ?: "them"} a voicemail")

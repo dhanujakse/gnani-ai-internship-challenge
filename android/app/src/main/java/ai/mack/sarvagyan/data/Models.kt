@@ -15,6 +15,7 @@ data class User(
     @SerialName("allow_calls") val allowCalls: String = "contacts", // who can call me: contacts | everyone
     @SerialName("read_receipts") val readReceipts: Boolean = true,
     @SerialName("chat_retention_days") val chatRetentionDays: Int = 30,
+    @SerialName("phone_added") val phoneAdded: Boolean = false, // friends can find me in "Discover from Phone"
 )
 
 @Serializable
@@ -84,7 +85,10 @@ data class CallRecord(
     val utterances: Int = 0,
     @SerialName("my_language") val myLanguage: String? = null,
     val peer: Peer? = null,
-)
+    val direction: String? = null,   // "incoming" | "outgoing"
+) {
+    val missedByMe get() = direction == "incoming" && status == "missed"
+}
 
 @Serializable
 data class HistoryResponse(val calls: List<CallRecord>)

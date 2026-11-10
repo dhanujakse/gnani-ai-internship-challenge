@@ -22,7 +22,8 @@ object PrivacyPolicy {
         add("Who else processes your words" to "To translate, what you say or type is sent, without your name or account " +
             "details, to Gnani.ai (speech recognition and the translated voice, India) and MyMemory / Translated (text translation, " +
             "Italy). Their own privacy terms apply to that processing. The original voices of a call travel directly between the " +
-            "two phones, encrypted.")
+            "two phones, encrypted. When someone calls you while the app is closed, Google Firebase Cloud Messaging " +
+            "wakes your phone; it carries only the call id and the caller's name, username and language, never what is said.")
         add("Your choices" to listOf(
             "Delete your account and all its server data: Settings → Account → Delete account. It happens at once.",
             "Turn read receipts off, choose how long chats are kept: Settings → Chats.",

@@ -380,7 +380,7 @@ class CallSession(
         if (notifyServer) socket.send(buildJsonObject { put("type", JsonPrimitive("leave")) })
         _state.update { it.copy(status = CallStatus.Ended, endedAtMs = System.currentTimeMillis(), endReason = reason) }
         if (settings.saveTranscripts) saveTranscript()
-        teardown()
+        teardown(notifyServer)
     }
 
     private fun saveTranscript() {
@@ -396,12 +396,13 @@ class CallSession(
         )
     }
 
-    private fun teardown() {
+    private fun teardown(notifyPeer: Boolean = true) {
         ended = true
         mic.enabled = false
         scope.launch {
             delay(300) // let the "leave" frame go out
-            socket.close()
+            // close code 4000 = "I hung up": even if the leave frame was lost, the server ends the call for the other person
+            socket.close(if (notifyPeer) 4000 else 1000, if (notifyPeer) "ended" else "bye")
             rtc?.close()
             rtc = null
             player.release()

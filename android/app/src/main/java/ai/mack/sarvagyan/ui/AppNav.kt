@@ -122,7 +122,8 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
         composable<Routes.Summary> { entry ->
             CallSummaryScreen(
                 callId = entry.toRoute<Routes.Summary>().callId,
-                onNewCall = { nav.navigate(Routes.CallSetup(join = false)) { popUpTo(Routes.Home) } },
+                onCallStarted = { nav.navigate(Routes.ActiveCall) { popUpTo(Routes.Home) } },
+                onContacts = { nav.navigate(Routes.Contacts) { popUpTo(Routes.Home) } },
                 onHome = { nav.popBackStack(Routes.Home, inclusive = false) },
             )
         }

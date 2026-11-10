@@ -156,7 +156,7 @@ fun normalizePhoneE164(raw: String, defaultCountryCode: String = "+91"): String?
     return null
 }
 
-private fun sha256Hex(s: String): String {
+internal fun sha256Hex(s: String): String {
     val md = MessageDigest.getInstance("SHA-256")
     val bytes = md.digest(s.toByteArray(Charsets.UTF_8))
     return bytes.joinToString("") { "%02x".format(it) }
@@ -315,7 +315,8 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
 
     fun add() {
         val name = username.trim().removePrefix("@")
-        if (name.isEmpty()) return
+        if (name.isEmpty()) { error = "Type their @username first, then tap Add."; return }
+        if (adding) return
         adding = true
         scope.launch {
             try { c.api.addContact(name); username = ""; load() } catch (e: ApiException) { error = e.message } finally { adding = false }
@@ -351,7 +352,8 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }),
                 )
                 Spacer(Modifier.width(8.dp))
-                IconButton(onClick = { add() }, enabled = username.isNotBlank() && !adding) { Icon(Icons.Filled.PersonAdd, "Add contact") }
+                // always tappable: an empty box explains what to type instead of looking broken
+                IconButton(onClick = { add() }) { Icon(Icons.Filled.PersonAdd, "Add contact", tint = Brand.HighlightAccent) }
             }
 
             SectionTitle("Your contacts")
@@ -399,6 +401,8 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
             }
         } else {
             // Tab 1: Discover from Phone Contacts
+            MyNumberCard()
+            Spacer(Modifier.height(12.dp))
             if (!hasContactPermission) {
                 AppCard {
                     Text("Discover Friends from Contacts", style = MaterialTheme.typography.titleMedium)

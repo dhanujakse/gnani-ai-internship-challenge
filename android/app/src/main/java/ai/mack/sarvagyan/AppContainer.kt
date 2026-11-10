@@ -66,6 +66,14 @@ class AppContainer(private val context: Context) {
     init {
         // the always-on connection runs while someone is signed in; incoming calls arrive through it
         scope.launch { user.map { it?.id }.distinctUntilChanged().collectLatest { id -> if (id != null) appSocket.run() } }
+        // push: once signed in, tell the server where to wake this phone for incoming calls (Firebase)
+        scope.launch {
+            user.map { it?.id }.distinctUntilChanged().collect { id ->
+                if (id != null) runCatching {
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { registerPushToken(it) }
+                }
+            }
+        }
         scope.launch { appSocket.events.collect { onAppEvent(it) } }
         scope.launch { settingsStore.cachedLanguages(json)?.let { languages.value = it } }
     }
@@ -121,12 +129,22 @@ class AppContainer(private val context: Context) {
         if (token != null) scope.launch { runCatching { api.logout(token) } } // ends the session on the server too
     }
 
+    /** Sends this phone's push token to the server (tied to the current sign-in; signing out removes it there). */
+    fun registerPushToken(token: String) {
+        if (tokens.get() == null) return
+        scope.launch { runCatching { api.registerPushToken(token) } }
+    }
+
+    /** A push message (the app may have just been started by it): handled like the live connection's events. */
+    fun onPush(ev: JsonObject) = onAppEvent(ev)
+
     private fun inCall(): Boolean = activeCall.value?.state?.value?.status?.let { it != CallStatus.Ended && it != CallStatus.Failed } == true
 
     private fun onAppEvent(ev: JsonObject) {
         val callId = ev.str("call_id") ?: return
         when (ev.str("type")) {
             "incoming_call" -> {
+                if (incomingCall.value?.callId == callId) return  // already ringing (push and live connection both delivered it)
                 if (inCall()) { scope.launch { runCatching { api.declineCall(callId) } }; return } // busy
                 val from = ev.objOrNull("from") ?: return
                 val call = IncomingCall(callId, from.str("id") ?: return, from.str("name") ?: "Someone", from.str("username"),
@@ -134,9 +152,11 @@ class AppContainer(private val context: Context) {
                 incomingCall.value = call
                 ringer.start(call.fromName, call.expiresInS * 1000L)
             }
-            "call_cancelled" -> if (incomingCall.value?.callId == callId) {
+            "call_cancelled" -> incomingCall.value?.takeIf { it.callId == callId }?.let { call ->
                 incomingCall.value = null
                 ringer.stop()
+                // nobody answered (timed out) or the caller gave up while it rang: a missed call
+                if (ev.str("reason") in setOf("missed", "cancelled")) ringer.notifyMissed(call.fromName)
             }
             "call_declined", "call_missed" -> activeCall.value?.takeIf { it.info.callId == callId }?.let { session ->
                 val name = ev.str("peer_name") ?: session.info.peerName ?: "They"

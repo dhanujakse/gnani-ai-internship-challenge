@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.google.services) // reads app/google-services.json (Firebase project)
 }
 
 // Backend address. Default set to Render cloud server so physical phones connect immediately.
@@ -98,6 +99,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.webrtc)
+    // push: incoming calls ring even when the app is closed (Firebase Cloud Messaging only, no Analytics)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)

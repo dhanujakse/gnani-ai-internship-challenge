@@ -46,12 +46,13 @@ from sarvagyan_server.providers.base import ProviderError
 from sarvagyan_server.providers.gnani_tts import GnaniSynthesizer
 from sarvagyan_server.providers.mymemory import MyMemoryTranslator
 from sarvagyan_server.credits import Meter, TtsCache
+from sarvagyan_server.push import FcmSender, load_service_account
 from sarvagyan_server.realtime import CallRoom, Participant
 from sarvagyan_server import voicemail as vm
 from sarvagyan_server.ratelimit import RateLimiter
 from sarvagyan_server.security import (REFRESH_TTL_S, hash_password, hash_refresh_token, issue_token,
-                                       new_invite_code, new_refresh_token, normalise_invite_code, token_claims,
-                                       verify_password)
+                                       new_invite_code, new_refresh_token, normalise_invite_code, seal_phone_hash,
+                                       token_claims, verify_password)
 
 log = logging.getLogger("sarvagyan")
 WAITING_TTL_S = 15 * 60
@@ -63,7 +64,7 @@ class Services:
     """Everything stateful, created once per app (tests inject fakes)."""
 
     def __init__(self, settings: Settings, db: Database | None = None, recognizer=None, translator=None,
-                 synthesizer_factory=None, voicemail_pace_s: float = vm.FRAME_S) -> None:  # fmt: skip
+                 synthesizer_factory=None, voicemail_pace_s: float = vm.FRAME_S, push=None) -> None:  # fmt: skip
         self.settings = settings
         self.db = db or Database(settings.data_path / "sarvagyan.sqlite3")
         key = settings.gnani_api_key.get_secret_value()
@@ -81,6 +82,12 @@ class Services:
         self._usage: dict[tuple[str, str], int] = defaultdict(int)
         self.meter = Meter(settings)  # what the paid speech APIs were used for today (credits.py)
         self.tts_cache = TtsCache(max(0, settings.tts_cache_mb) * 1024 * 1024)
+        # push (Firebase): rings phones whose app is closed; off unless FCM_SERVICE_ACCOUNT is set
+        sa = load_service_account(settings.fcm_service_account.get_secret_value())
+        self.push_sender = push if push is not None else (FcmSender(sa) if sa else None)
+        if settings.fcm_service_account.get_secret_value() and sa is None:
+            log.warning("FCM_SERVICE_ACCOUNT is set but is not a valid service-account key; push is off")
+        self._push_tasks: set[asyncio.Task] = set()
         self.chat_audio_dir = self.settings.data_path / "chat_audio"
         self.chat_audio_dir.mkdir(parents=True, exist_ok=True)
         self.chat_sockets: dict[str, set[WebSocket]] = defaultdict(set)
@@ -181,6 +188,23 @@ class Services:
                 (self.chat_audio_dir / f"{audio_id}.pcm").unlink(missing_ok=True)
         self.db.purge_sessions(now - 86400)
 
+    def push(self, user_id: str, data: dict[str, str], ttl_s: int = 30) -> None:
+        """Wakes the user's phones through Firebase (in the background, never delays the request)."""
+        if self.push_sender is None:
+            return
+        tokens = self.db.push_tokens(user_id)
+        if not tokens:
+            return
+
+        async def run() -> None:
+            for token in tokens:
+                if await self.push_sender.send(token, data, ttl_s) == "invalid":
+                    self.db.delete_push_token(token)   # app uninstalled or token replaced
+
+        task = asyncio.create_task(run())
+        self._push_tasks.add(task)
+        task.add_done_callback(self._push_tasks.discard)
+
     async def notify_user(self, user_id: str, event: dict, skip_session: str | None = None) -> bool:
         """Sends an event to every open app socket of a user. True if at least one phone received it."""
         sent = False
@@ -213,11 +237,16 @@ class Services:
         callee = ring["to"]
         await self.notify_user(callee, {"type": "call_cancelled", "call_id": cid, "reason": outcome,
                                         "from_id": call["host"]})  # fmt: skip
+        self.push(callee, {"type": "call_cancelled", "call_id": cid, "reason": outcome}, ttl_s=600)
         if outcome != "cancelled":
             u = self.db.get_user(callee)
             await self.notify_user(call["host"], {"type": f"call_{outcome}", "call_id": cid, "peer_id": callee,
                                                   "peer_name": u["display_name"] if u else None})  # fmt: skip
-        self.db.mark_ended(cid, 0)
+        # both people see it in their call history: the callee as a missed (or declined) call they can call back
+        callee_user = self.db.get_user(callee)
+        if callee_user is not None:
+            self.db.add_participant(cid, callee, callee_user.get("language") or "ta-IN")
+        self.db.mark_unanswered(cid, "declined" if outcome == "declined" else "missed")
         self.calls.pop(cid, None)
         self.by_code.pop(call["code"], None)
         room = self.rooms.pop(cid, None)
@@ -271,6 +300,9 @@ class Services:
                 self.db.mark_ended(cid, 0)
 
 
+HUNG_UP_CLOSE_CODE = 4000  # the app closes the call socket with this code when the user hangs up
+
+
 def create_app(services: Services | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -319,7 +351,8 @@ def create_app(services: Services | None = None) -> FastAPI:
         return {"id": u["id"], "display_name": u["display_name"], "username": u.get("username"), "email": u["email"],
                 "is_demo": bool(u["is_demo"]), "language": u["language"],
                 "allow_calls": u.get("allow_calls") or "contacts", "read_receipts": bool(u.get("read_receipts", 1)),
-                "chat_retention_days": int(u.get("chat_retention_days") or 30)}  # fmt: skip
+                "chat_retention_days": int(u.get("chat_retention_days") or 30),
+                "phone_added": bool(u.get("phone_hash"))}  # fmt: skip
 
     def session(u: dict, s: Services, device: str | None) -> dict:
         refresh = new_refresh_token()
@@ -379,8 +412,8 @@ def create_app(services: Services | None = None) -> FastAPI:
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from None
         user = s.db.create_user(body.display_name.strip(), email, hash_password(body.password), is_demo=False, username=uname, language=lang)
-        if body.phone_hash:
-            s.db.update_user(user["id"], phone_hash=body.phone_hash.strip().lower())
+        if body.phone_hash and (sealed := seal_phone_hash(body.phone_hash, s.settings.signing_key)):
+            s.db.update_user(user["id"], phone_hash=sealed)
         return session(user, s, body.device)
 
     @app.post("/v1/auth/login", dependencies=[Depends(rate_limit("login-ip", 60, 60))])
@@ -415,6 +448,16 @@ def create_app(services: Services | None = None) -> FastAPI:
         s.db.rotate_session(sess["id"], hash_refresh_token(new), REFRESH_TTL_S)
         return {"token": issue_token(user["id"], s.settings.signing_key, sid=sess["id"]), "refresh_token": new,
                 "expires_in": 15 * 60, "user": public_user(user)}  # fmt: skip
+
+    class PushTokenIn(BaseModel):
+        token: str = Field(min_length=20, max_length=4096)
+        platform: str = Field(default="android", max_length=20)
+
+    @app.post("/v1/me/push-token", dependencies=[Depends(rate_limit("push-token", 30, 3600))])
+    def register_push_token(body: PushTokenIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        """Where to wake this phone for incoming calls. Tied to this sign-in: signing out removes it."""
+        s.db.set_push_token(body.token.strip(), user["id"], user["session_id"], body.platform)
+        return {"ok": True, "push": s.push_sender is not None}
 
     @app.post("/v1/auth/logout")
     def logout(user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
@@ -505,7 +548,11 @@ def create_app(services: Services | None = None) -> FastAPI:
         if body.chat_retention_days is not None and body.chat_retention_days not in (7, 30, 365):
             raise HTTPException(422, "Chat history can be kept for 7, 30 or 365 days.")
         receipts = None if body.read_receipts is None else int(body.read_receipts)
-        p_hash = body.phone_hash.strip().lower() if body.phone_hash else None
+        p_hash = None
+        if body.phone_hash is not None:  # "" removes the number; anything else must be the app's SHA-256 hash
+            p_hash = "" if body.phone_hash.strip() == "" else seal_phone_hash(body.phone_hash, s.settings.signing_key)
+            if p_hash is None:
+                raise HTTPException(422, "That doesn't look like a valid phone number.")
         return public_user(s.db.update_user(user["id"], display_name=body.display_name, language=body.language,
                                             username=uname, allow_calls=body.allow_calls, read_receipts=receipts,
                                             chat_retention_days=body.chat_retention_days, phone_hash=p_hash))  # fmt: skip
@@ -671,15 +718,19 @@ def create_app(services: Services | None = None) -> FastAPI:
     class MatchPhonesIn(BaseModel):
         phone_hashes: list[str] = Field(default_factory=list, max_length=2000)
 
-    @app.post("/v1/contacts/match-phones")
+    # rate-limited: without a limit, anyone signed in could walk through every possible number
+    @app.post("/v1/contacts/match-phones", dependencies=[Depends(rate_limit("match-phones", 60, 3600))])
     def match_phones(body: MatchPhonesIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
-        hashes = [h.strip().lower() for h in body.phone_hashes if len(h.strip()) >= 16]
-        matched = s.db.match_phone_hashes(hashes)
+        sealed = {}  # sealed hash -> the hash the app sent (so the app can tell which of its contacts matched)
+        for h in body.phone_hashes:
+            if (x := seal_phone_hash(h, s.settings.signing_key)) is not None:
+                sealed[x] = h.strip().lower()
+        matched = s.db.match_phone_hashes(list(sealed))
         return {
             "matches": [
                 {"id": u["id"], "name": u["display_name"], "username": u.get("username"),
-                 "language": u.get("language") or "ta-IN", "phone_hash": u.get("phone_hash")}
-                for u in matched if u["id"] != user["id"]
+                 "language": u.get("language") or "ta-IN", "phone_hash": sealed.get(u.get("phone_hash"))}
+                for u in matched if u["id"] != user["id"] and not s.db.either_blocked(user["id"], u["id"])
             ]
         }
 
@@ -729,6 +780,11 @@ def create_app(services: Services | None = None) -> FastAPI:
             "type": "incoming_call", "call_id": cid, "expires_in": s.settings.ring_timeout_s,
             "from": {"id": user["id"], "name": user["display_name"], "username": user.get("username"),
                      "language": body.language}})  # fmt: skip
+        s.push(callee["id"], {"type": "incoming_call", "call_id": cid, "expires_in": str(s.settings.ring_timeout_s),
+                              "sent_at": f"{time.time():.3f}", "from_id": user["id"], "from_name": user["display_name"],
+                              "from_username": user.get("username") or "", "from_language": body.language},
+               ttl_s=s.settings.ring_timeout_s)  # fmt: skip
+        reachable = reachable or bool(s.push_sender and s.db.push_tokens(callee["id"]))
         s.start_ring_timer(cid)
         log.info("direct call ringing call=%s reachable=%s", cid[:8], reachable)
         return {**call_info(cid, s.calls[cid]), "ringing": True, "reachable": reachable,
@@ -769,6 +825,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         for row in s.db.history(user["id"]):
             dur = int(row["ended_at"] - row["started_at"]) if row["ended_at"] and row["started_at"] else None
             items.append({"call_id": row["id"], "status": row["status"], "created_at": row["created_at"],
+                          "direction": "outgoing" if row["host_id"] == user["id"] else "incoming",
                           "duration_s": dur, "utterances": row["utterances"], "my_language": row["my_language"],
                           "peer": ({"id": row["peer_id"], "name": row["peer_name"], "language": row["peer_language"],
                                     "is_demo": bool(row["peer_is_demo"]), "favourite": row["peer_id"] in favs}
@@ -1204,6 +1261,7 @@ def create_app(services: Services | None = None) -> FastAPI:
             while True:
                 msg = await ws.receive()
                 if msg["type"] == "websocket.disconnect":
+                    leaving = leaving or msg.get("code") == HUNG_UP_CLOSE_CODE  # the app hung up (see below)
                     break
                 if (data := msg.get("bytes")) is not None:
                     if len(data) <= MAX_FRAME:
@@ -1222,7 +1280,12 @@ def create_app(services: Services | None = None) -> FastAPI:
                     leaving = True
                     break
                 await handle(room, part, event, send)
-        except (WebSocketDisconnect, asyncio.TimeoutError, RuntimeError):
+        except WebSocketDisconnect as exc:
+            # close code 4000 = the app hung up: end the call for the other person at once, even if the
+            # "leave" frame was lost (otherwise they'd wait out the 30 s reconnect grace)
+            if exc.code == HUNG_UP_CLOSE_CODE:
+                leaving = True
+        except (asyncio.TimeoutError, RuntimeError):
             pass
         except PermissionError as exc:
             with contextlib.suppress(Exception):

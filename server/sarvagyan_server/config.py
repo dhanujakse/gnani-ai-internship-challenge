@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     turn_urls: str = ""
     turn_username: str = ""
     turn_credential: SecretStr = SecretStr("")
+    fcm_service_account: SecretStr = SecretStr("")  # Firebase service-account JSON (or base64): push for incoming calls
     turn_secret: SecretStr = SecretStr("")  # coturn `static-auth-secret`: per-user credentials valid 24 h
     ring_timeout_s: int = 30  # an unanswered direct call becomes a missed call after this
     data_dir: str = "server/data"

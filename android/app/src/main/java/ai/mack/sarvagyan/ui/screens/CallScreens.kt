@@ -34,7 +34,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Voicemail
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -288,7 +290,6 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
     var compact by remember { mutableStateOf(false) }
     var showAudio by remember { mutableStateOf(false) }
     var showLanguageSheet by remember { mutableStateOf(false) }
-    var confirmEnd by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val colors = LocalCallColors.current
     val myLang = c.language(st.me?.language ?: settings.myLanguage)
@@ -385,7 +386,7 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
             CallControl(if (st.translatedAudio) Icons.Filled.Translate else Icons.Filled.SubtitlesOff,
                 if (st.translatedAudio) "Voice on" else "Subtitles only", active = !st.translatedAudio) { call.setTranslatedAudio(!st.translatedAudio) }
             CallControl(if (compact) Icons.Filled.UnfoldMore else Icons.Filled.UnfoldLess, if (compact) "Transcript" else "Focus") { compact = !compact }
-            FilledIconButton(onClick = { confirmEnd = true }, modifier = Modifier.size(56.dp),
+            FilledIconButton(onClick = { call.end() }, modifier = Modifier.size(56.dp),   // hangs up at once, like a phone
                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = colors.endCall)) {
                 Icon(Icons.Filled.CallEnd, contentDescription = "End call", tint = Color.White, modifier = Modifier.size(28.dp))
             }
@@ -407,12 +408,6 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
     if (showAudio) AudioSheet(
         routes = st.routes, route = st.route, volume = st.originalVolume, scale = st.subtitleScale,
         onRoute = call::setRoute, onVolume = call::setOriginalVolume, onScale = call::setSubtitleScale, onDismiss = { showAudio = false },
-    )
-    if (confirmEnd) AlertDialog(
-        onDismissRequest = { confirmEnd = false },
-        title = { Text("End this call?") },
-        confirmButton = { TextButton(onClick = { confirmEnd = false; call.end() }) { Text("End call", color = colors.endCall) } },
-        dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep talking") } },
     )
 }
 
@@ -558,7 +553,7 @@ private fun AudioSheet(
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-fun CallSummaryScreen(callId: String, onNewCall: () -> Unit, onHome: () -> Unit) {
+fun CallSummaryScreen(callId: String, onCallStarted: () -> Unit, onContacts: () -> Unit, onHome: () -> Unit) {
     val c = LocalContext.current.container
     val session by c.activeCall.collectAsStateWithLifecycle()
     val st = session?.takeIf { it.info.callId == callId }?.state?.collectAsStateWithLifecycle()?.value
@@ -575,6 +570,7 @@ fun CallSummaryScreen(callId: String, onNewCall: () -> Unit, onHome: () -> Unit)
         "$who: ${t.original}" + (t.translation?.takeIf { it != t.original }?.let { "  →  $it" } ?: "")
     } else saved?.lines?.joinToString("\n") { "${if (it.speaker == "me") "You" else saved.peerName}: ${it.original}" + (it.translation?.let { tr -> "  →  $tr" } ?: "") } ?: ""
 
+    val placeCall = rememberPlaceCall(onCallStarted)
     DisposableEffect(Unit) { onDispose { if (session?.info?.callId == callId) c.activeCall.value = null } }
 
     ScreenScaffold("Call summary", onHome) {
@@ -613,7 +609,15 @@ fun CallSummaryScreen(callId: String, onNewCall: () -> Unit, onHome: () -> Unit)
             }
         }
         Spacer(Modifier.height(24.dp))
-        PrimaryButton("Start another call", onNewCall, Modifier.fillMaxWidth())
+        // call the same person again directly (rings them), or pick someone from contacts
+        val again = session?.takeIf { it.info.callId == callId }
+        val peerId = st?.peer?.id ?: again?.info?.peerId
+        val peerName = st?.peer?.name ?: again?.info?.peerName ?: saved?.peerName
+        if (peerId != null && peerName != null) {
+            PrimaryButton("Call $peerName again", { placeCall(peerId, peerName) }, Modifier.fillMaxWidth(), icon = Icons.Filled.Call)
+            Spacer(Modifier.height(8.dp))
+        }
+        SecondaryButton("Open contacts", onContacts, Modifier.fillMaxWidth(), icon = Icons.Filled.People)
         Spacer(Modifier.height(8.dp))
         SecondaryButton("Back to home", onHome, Modifier.fillMaxWidth())
         Spacer(Modifier.height(24.dp))
