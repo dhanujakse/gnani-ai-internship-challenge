@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -207,19 +209,19 @@ fun CallSetupScreen(join: Boolean, initialCode: String?, onBack: () -> Unit, onL
 
     ScreenScaffold(if (join) "Join a call" else "Start a call", onBack) {
         AppCard {
-            Text("Languages", style = MaterialTheme.typography.titleMedium)
+            Text("Speaking language", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("You speak ", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("I speak ", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LanguagePill(c.language(s.myLanguage)?.native ?: s.myLanguage, highlighted = true)
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                if (join) "You'll hear the other person in ${c.language(s.myLanguage)?.name ?: s.myLanguage}."
-                else "Invite someone who speaks ${c.language(s.partnerLanguage)?.name ?: s.partnerLanguage} (or any supported language — they choose theirs).",
+                if (join) "You'll hear the other person translated into ${c.language(s.myLanguage)?.name ?: s.myLanguage}."
+                else "Each person uses their own \"I speak\" language — no second language selector needed.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onLanguages, contentPadding = PaddingValues(0.dp)) { Text("Change languages") }
+            TextButton(onClick = onLanguages, contentPadding = PaddingValues(0.dp)) { Text("Change language") }
         }
         Spacer(Modifier.height(12.dp))
         if (join) {
@@ -308,21 +310,20 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         // header
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(st.peer?.name ?: "?", colors.peer)
+            Avatar(st.peer?.name ?: call.info.peerName ?: "Peer", colors.peer, avatar = st.peer?.avatar, useMain = false)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(st.peer?.name ?: call.info.peerName ?: "Waiting for someone to join", style = MaterialTheme.typography.titleMedium)
                 val dur = st.startedAtMs?.let { formatDuration((now - it) / 1000) } ?: "--:--"
-                Text("$dur · ${statusLabel(st.status)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val peerLangNote = peerLang?.let { " · Speaking ${it.name}" } ?: ""
+                Text("$dur · ${statusLabel(st.status)}$peerLangNote", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             QualityChip(st.quality, st.rttMs, st.mediaConnected)
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.clickable { showLanguageSheet = true }) {
-                LanguagePill("You: ${myLang?.native ?: "?"} ▾", highlighted = true)
+                LanguagePill("I speak: ${myLang?.native ?: "?"} ▾", highlighted = true)
             }
-            Icon(Icons.Filled.Translate, null, Modifier.padding(horizontal = 8.dp).size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            LanguagePill("Them: ${peerLang?.native ?: "…"}")
             Spacer(Modifier.weight(1f))
             if (!st.muted && st.micStreaming) StatusChip("Mic on", colors.endCall, pulsing = true)
             else if (st.muted) StatusChip("Muted", MaterialTheme.colorScheme.onSurfaceVariant)
@@ -341,9 +342,25 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
         // conversation
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (st.unanswered != null) {
-                UnansweredCard(st.unanswered!!, call.info.peerName ?: "them",
-                    onVoicemail = call.info.peerId?.let { id -> { onVoicemail(id, call.info.peerName ?: "") } },
-                    onClose = onLeaveScreen)
+                LaunchedEffect(st.unanswered) {
+                    runCatching {
+                        val tone = if (st.unanswered == "Busy") ToneGenerator.TONE_SUP_BUSY else ToneGenerator.TONE_PROP_NACK
+                        val tg = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 75)
+                        tg.startTone(tone, 350)
+                        delay(450)
+                        tg.release()
+                    }
+                    delay(2200)
+                    c.activeCall.value = null
+                    onLeaveScreen()
+                }
+                UnansweredCard(
+                    title = st.unanswered!!,
+                    detail = st.unansweredDetail ?: "",
+                    name = call.info.peerName ?: "them",
+                    onVoicemail = call.info.peerId?.let { id -> { c.activeCall.value = null; onVoicemail(id, call.info.peerName ?: "") } },
+                    onClose = { c.activeCall.value = null; onLeaveScreen() },
+                )
             } else if (call.info.ringing && (st.status == CallStatus.WaitingForPeer || st.status == CallStatus.Connecting)) {
                 RingingCard(call.info.peerName ?: "them", call.info.reachable)
             } else if (st.status == CallStatus.WaitingForPeer || st.status == CallStatus.Connecting) {
@@ -385,8 +402,19 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
             CallControl(if (st.translatedAudio) Icons.Filled.Translate else Icons.Filled.SubtitlesOff,
                 if (st.translatedAudio) "Voice on" else "Subtitles only", active = !st.translatedAudio) { call.setTranslatedAudio(!st.translatedAudio) }
             CallControl(if (compact) Icons.Filled.UnfoldMore else Icons.Filled.UnfoldLess, if (compact) "Transcript" else "Focus") { compact = !compact }
-            FilledIconButton(onClick = { confirmEnd = true }, modifier = Modifier.size(56.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(containerColor = colors.endCall)) {
+            FilledIconButton(
+                onClick = {
+                    if (call.info.ringing && st.peer == null) {
+                        call.end("Call cancelled.")
+                        c.activeCall.value = null
+                        onLeaveScreen()
+                    } else {
+                        confirmEnd = true
+                    }
+                },
+                modifier = Modifier.size(56.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = colors.endCall),
+            ) {
                 Icon(Icons.Filled.CallEnd, contentDescription = "End call", tint = Color.White, modifier = Modifier.size(28.dp))
             }
         }
@@ -399,7 +427,10 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
         currentCode = st.me?.language ?: settings.myLanguage,
         onSelect = { newCode ->
             call.setLanguage(newCode, settings.autoDetect)
-            scope.launch { c.settingsStore.update { it.copy(myLanguage = newCode) } }
+            scope.launch {
+                c.settingsStore.update { it.copy(myLanguage = newCode) }
+                runCatching { c.api.updateMe(language = newCode) }
+            }
         },
         onDismiss = { showLanguageSheet = false }
     )
@@ -637,14 +668,18 @@ private fun RingingCard(name: String, reachable: Boolean) {
 }
 
 @Composable
-private fun UnansweredCard(reason: String, name: String, onVoicemail: (() -> Unit)?, onClose: () -> Unit) {
+private fun UnansweredCard(title: String, detail: String, name: String, onVoicemail: (() -> Unit)?, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Avatar(name, LocalCallColors.current.peer, 96.dp)
         Spacer(Modifier.height(16.dp))
-        Text(reason, style = MaterialTheme.typography.headlineSmall)
+        Text(title, style = MaterialTheme.typography.headlineMedium, color = LocalCallColors.current.endCall)
+        if (detail.isNotBlank() && detail != title) {
+            Spacer(Modifier.height(6.dp))
+            Text(detail, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Spacer(Modifier.height(24.dp))
         if (onVoicemail != null) {
-            PrimaryButton("Leave a voicemail", onVoicemail, Modifier.fillMaxWidth(), icon = Icons.Filled.Voicemail)
+            PrimaryButton("Send voice message", onVoicemail, Modifier.fillMaxWidth(), icon = Icons.Filled.Voicemail)
             Spacer(Modifier.height(8.dp))
         }
         SecondaryButton("Close", onClose, Modifier.fillMaxWidth())

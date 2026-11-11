@@ -1,6 +1,7 @@
 package ai.mack.sarvagyan.call
 
 import android.content.Context
+import android.util.Log
 import ai.mack.sarvagyan.data.ApiClient
 import ai.mack.sarvagyan.data.AppSettings
 import ai.mack.sarvagyan.data.CallInfo
@@ -33,7 +34,7 @@ import org.webrtc.PeerConnection
 enum class CallStatus { Connecting, WaitingForPeer, ConnectingAudio, Live, Reconnecting, Ended, Failed }
 enum class PipelineState { Idle, Connecting, Ready, Reconnecting, Error }
 
-data class ParticipantUi(val id: String, val name: String, val language: String, val muted: Boolean = false, val connected: Boolean = true)
+data class ParticipantUi(val id: String, val name: String, val language: String, val avatar: String? = null, val muted: Boolean = false, val connected: Boolean = true)
 
 data class Banner(val message: String, val retryId: String? = null, val severe: Boolean = false)
 
@@ -60,7 +61,8 @@ data class CallUiState(
     val notice: String? = null,
     val endReason: String? = null,
     val micStreaming: Boolean = false,
-    val unanswered: String? = null, // a ringing call that was declined or not answered: offer voicemail
+    val unanswered: String? = null, // a ringing call that was declined, busy, no answer, or unavailable
+    val unansweredDetail: String? = null,
 )
 
 /**
@@ -75,7 +77,7 @@ class CallSession(
     private val transcripts: TranscriptStore,
     val info: CallInfo,
     private val settings: AppSettings,
-    private val myLanguage: String,
+    private var myLanguage: String,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _state = MutableStateFlow(
@@ -121,6 +123,7 @@ class CallSession(
         }
         _state.update { it.copy(route = router.current()) }
         player.volume = 1f
+        Log.i("CallLifecycle", "state=connecting callId=${info.callId} route=${router.current()}")
         connectSocket()
         scope.launch { // stats + keepalive
             while (isActive) {
@@ -187,11 +190,13 @@ class CallSession(
                 val you = m.objOrNull("you")
                 myId = you?.str("user_id")
                 val peer = m.objOrNull("peer")?.let { participant(it) }
+                val nextStatus = if (peer?.connected == true) CallStatus.ConnectingAudio else CallStatus.WaitingForPeer
+                Log.i("CallLifecycle", "state=connecting callId=${info.callId} socket=joined status=$nextStatus peerConnected=${peer?.connected == true}")
                 _state.update {
                     it.copy(
                         me = you?.let { y -> participant(y) },
                         peer = peer,
-                        status = if (peer?.connected == true) CallStatus.ConnectingAudio else CallStatus.WaitingForPeer,
+                        status = nextStatus,
                     )
                 }
             }
@@ -207,6 +212,7 @@ class CallSession(
             }
             "peer_joined" -> {
                 val initiator = m.bool("initiator") ?: false
+                Log.i("CallLifecycle", "state=connecting callId=${info.callId} peer_joined initiator=$initiator")
                 _state.update {
                     it.copy(peer = m.objOrNull("peer")?.let { p -> participant(p) },
                         status = if (it.mediaConnected) CallStatus.Live else CallStatus.ConnectingAudio,
@@ -272,7 +278,7 @@ class CallSession(
 
     private fun participant(o: JsonObject) = ParticipantUi(
         id = o.str("user_id") ?: "", name = o.str("name") ?: "Guest", language = o.str("language") ?: "",
-        muted = o.bool("muted") ?: false, connected = o.bool("connected") ?: true,
+        avatar = o.str("avatar"), muted = o.bool("muted") ?: false, connected = o.bool("connected") ?: true,
     )
 
     private fun parseUtterance(m: JsonObject): UtteranceEvent? {
@@ -296,6 +302,7 @@ class CallSession(
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
                         everConnected = true
+                        Log.i("CallLifecycle", "state=connected callId=${info.callId} peer=${_state.value.peer?.id?.take(8)}")
                         _state.update { it.copy(mediaConnected = true, status = CallStatus.Live, banner = null) }
                         router.reapply()
                         _state.update { it.copy(routes = router.available(), route = router.current()) }
@@ -351,7 +358,9 @@ class CallSession(
     fun setSubtitleScale(scale: Float) = _state.update { it.copy(subtitleScale = scale.coerceIn(0.8f, 1.8f)) }
 
     fun setLanguage(code: String, autoDetect: Boolean) {
-        _state.update { it.copy(autoDetect = autoDetect) }
+        myLanguage = code
+        _state.update { it.copy(autoDetect = autoDetect, me = it.me?.copy(language = code)) }
+        Log.i("CallLifecycle", "state=language_changed callId=${info.callId} lang=$code autoDetect=$autoDetect")
         socket.send(buildJsonObject {
             put("type", JsonPrimitive("settings")); put("language", JsonPrimitive(code)); put("auto_detect", JsonPrimitive(autoDetect))
         })
@@ -364,20 +373,27 @@ class CallSession(
     fun dismissBanner() = _state.update { it.copy(banner = null, notice = null) }
 
     private fun fail(message: String) {
+        Log.i("CallLifecycle", "state=ended callId=${info.callId} status=failed reason=$message")
         _state.update { it.copy(status = CallStatus.Failed, banner = Banner(message, severe = true), endReason = message) }
         teardown()
     }
 
-    /** The person we rang declined or didn't answer; the server has already ended the call. */
-    fun markUnanswered(reason: String) {
+    /** The person we rang declined, was busy, didn't answer, or was unavailable; the server has ended the call. */
+    fun markUnanswered(title: String, detail: String = title) {
         if (ended) return
-        _state.update { it.copy(unanswered = reason) }
-        end(reason, notifyServer = false)
+        _state.update { it.copy(unanswered = title, unansweredDetail = detail) }
+        end(detail, notifyServer = false)
     }
 
     fun end(reason: String = "You ended the call.", notifyServer: Boolean = true) {
         if (ended) return
-        if (notifyServer) socket.send(buildJsonObject { put("type", JsonPrimitive("leave")) })
+        Log.i("CallLifecycle", "state=ended callId=${info.callId} status=ended notifyServer=$notifyServer reason=$reason")
+        if (notifyServer) {
+            if (info.ringing && _state.value.peer == null && _state.value.unanswered == null) {
+                scope.launch { runCatching { api.cancelCall(info.callId) } }
+            }
+            socket.send(buildJsonObject { put("type", JsonPrimitive("leave")) })
+        }
         _state.update { it.copy(status = CallStatus.Ended, endedAtMs = System.currentTimeMillis(), endReason = reason) }
         if (settings.saveTranscripts) saveTranscript()
         teardown()

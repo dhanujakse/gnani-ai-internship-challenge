@@ -19,6 +19,7 @@ def recording(lang: str, text: str, seconds: float = 1.0) -> bytes:
 def called_each_other(env, lang_b: str = "en-IN"):
     ta, a = env.guest("Siva")
     tb, b = env.guest("Friend")
+    env.client.patch("/v1/me", json={"language": "ta-IN"}, headers=env.auth(ta))
     env.client.patch("/v1/me", json={"language": lang_b}, headers=env.auth(tb))
     call = env.client.post("/v1/calls", json={"language": "ta-IN"}, headers=env.auth(ta)).json()
     env.client.post("/v1/calls/join", json={"code": call["invite_code"], "language": lang_b}, headers=env.auth(tb))

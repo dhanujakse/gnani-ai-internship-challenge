@@ -11,8 +11,12 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import ai.mack.sarvagyan.R
+import ai.mack.sarvagyan.container
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +57,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -428,8 +433,37 @@ fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifie
     }
 }
 
+private fun initialsFor(name: String): String {
+    val words = name.trim()
+        .split(Regex("\\s+"))
+        .mapNotNull { w -> w.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar() }
+    return when {
+        words.size >= 2 -> "${words[0]}${words[1]}"
+        words.size == 1 -> "${words[0]}"
+        else -> "U"
+    }
+}
+
 @Composable
-fun Avatar(name: String, color: Color, size: Dp = 44.dp) {
+fun Avatar(
+    name: String,
+    color: Color,
+    size: Dp = 44.dp,
+    avatar: String? = null,
+    useMain: Boolean = size > 64.dp,
+    contentDescription: String? = null,
+) {
+    val context = LocalContext.current
+    val store = remember(context) { runCatching { context.container.avatars }.getOrNull() }
+    val cached = remember(avatar, useMain, store) { store?.peekCached(avatar, useMain) }
+    val bitmap by produceState<ImageBitmap?>(initialValue = cached, key1 = avatar, key2 = useMain) {
+        value = if (!avatar.isNullOrBlank() && store != null) {
+            store.peekCached(avatar, useMain) ?: store.loadBitmap(avatar, useMain)
+        } else {
+            null
+        }
+    }
+
     Box(
         Modifier
             .size(size)
@@ -442,12 +476,23 @@ fun Avatar(name: String, color: Color, size: Dp = 44.dp) {
             .border(1.5.dp, color.copy(alpha = 0.7f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            name.trim().take(1).uppercase().ifEmpty { "?" },
-            color = color,
-            fontWeight = FontWeight.Bold,
-            fontSize = (size.value * 0.42f).sp,
-        )
+        val loaded = bitmap
+        if (loaded != null) {
+            Image(
+                bitmap = loaded,
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+            )
+        } else {
+            val init = remember(name) { initialsFor(name) }
+            Text(
+                init,
+                color = color,
+                fontWeight = FontWeight.Bold,
+                fontSize = (size.value * if (init.length > 1) 0.34f else 0.42f).sp,
+            )
+        }
     }
 }
 

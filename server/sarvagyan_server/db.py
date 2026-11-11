@@ -84,6 +84,8 @@ _COLUMNS = [
     ("messages", "expires_at", "REAL"),
     ("messages", "deleted_at", "REAL"),
     ("conversation_members", "last_delivered_at", "REAL NOT NULL DEFAULT 0"),
+    ("calls", "callee_id", "TEXT"),
+    ("calls", "outcome", "TEXT"),
 ]
 _SCHEMA += """
 CREATE TABLE IF NOT EXISTS hidden_messages (
@@ -181,7 +183,7 @@ class Database:
             chunk = unique_hashes[i:i + chunk_size]
             placeholders = ",".join("?" for _ in chunk)
             rows = self._exec(
-                f"""SELECT id, display_name, username, language, is_demo, phone_hash FROM users
+                f"""SELECT id, display_name, username, language, is_demo, phone_hash, avatar FROM users
                    WHERE phone_hash IN ({placeholders}) AND phone_hash IS NOT NULL""",
                 tuple(chunk),
             )
@@ -189,6 +191,8 @@ class Database:
         return out
 
     def update_user(self, uid: str, **fields: Any) -> dict | None:
+        if "display_name" in fields and fields["display_name"] is not None:
+            fields["display_name"] = fields["display_name"].strip()
         if "username" in fields and fields["username"] is not None:
             fields["username"] = fields["username"].strip()
             fields["username_norm"] = fields["username"].lower()
@@ -198,38 +202,56 @@ class Database:
         if allowed:
             sets = ", ".join(f"{k} = ?" for k in allowed)
             self._exec(f"UPDATE users SET {sets} WHERE id = ?", (*allowed.values(), uid))
+            if "display_name" in allowed:
+                self._exec("UPDATE messages SET sender_name = ? WHERE sender_id = ?", (allowed["display_name"], uid))
         return self.get_user(uid)
 
     # calls -----------------------------------------------------------------------
-    def insert_call(self, call_id: str, code: str, host_id: str) -> None:
-        self._exec("INSERT INTO calls (id, invite_code, host_id, status, created_at) VALUES (?,?,?,?,?)",
-                   (call_id, code, host_id, "waiting", time.time()))  # fmt: skip
+    def insert_call(self, call_id: str, code: str, host_id: str, callee_id: str | None = None) -> None:
+        self._exec("INSERT INTO calls (id, invite_code, host_id, callee_id, status, created_at) VALUES (?,?,?,?,?,?)",
+                   (call_id, code, host_id, callee_id, "waiting", time.time()))  # fmt: skip
 
     def add_participant(self, call_id: str, user_id: str, language: str) -> None:
         self._exec("INSERT OR REPLACE INTO call_participants (call_id, user_id, language, joined_at) VALUES (?,?,?,?)",
                    (call_id, user_id, language, time.time()))  # fmt: skip
 
     def mark_started(self, call_id: str) -> None:
-        self._exec("UPDATE calls SET status = 'active', started_at = COALESCE(started_at, ?) WHERE id = ?",
+        self._exec("UPDATE calls SET status = 'active', outcome = 'answered', started_at = COALESCE(started_at, ?) WHERE id = ?",
                    (time.time(), call_id))  # fmt: skip
 
-    def mark_ended(self, call_id: str, utterances: int) -> None:
-        self._exec("UPDATE calls SET status = 'ended', ended_at = ?, utterances = ? WHERE id = ? AND status != 'ended'",
-                   (time.time(), utterances, call_id))  # fmt: skip
+    def mark_ended(self, call_id: str, utterances: int, outcome: str | None = None) -> None:
+        self._exec(
+            """UPDATE calls
+               SET status = 'ended',
+                   ended_at = ?,
+                   utterances = ?,
+                   outcome = COALESCE(?, outcome)
+               WHERE id = ? AND status != 'ended'""",
+            (time.time(), utterances, outcome, call_id),
+        )
 
     def history(self, user_id: str, limit: int = 30) -> list[dict]:
         rows = self._exec(
-            """SELECT c.id, c.status, c.created_at, c.started_at, c.ended_at, c.utterances,
-                      me.language AS my_language, other.user_id AS peer_id, other.language AS peer_language,
-                      u.display_name AS peer_name, u.is_demo AS peer_is_demo
+            """SELECT c.id, c.status, c.outcome, c.host_id, c.callee_id, c.created_at, c.started_at, c.ended_at, c.utterances,
+                      me.language AS my_language,
+                      COALESCE(other.user_id, CASE WHEN c.host_id = ? THEN c.callee_id ELSE c.host_id END) AS peer_id,
+                      COALESCE(other.language, u.language) AS peer_language,
+                      u.display_name AS peer_name, u.is_demo AS peer_is_demo, u.avatar AS peer_avatar
                FROM calls c
-               JOIN call_participants me ON me.call_id = c.id AND me.user_id = ?
+               LEFT JOIN call_participants me ON me.call_id = c.id AND me.user_id = ?
                LEFT JOIN call_participants other ON other.call_id = c.id AND other.user_id != ?
-               LEFT JOIN users u ON u.id = other.user_id
+               LEFT JOIN users u ON u.id = COALESCE(other.user_id, CASE WHEN c.host_id = ? THEN c.callee_id ELSE c.host_id END)
+               WHERE me.user_id = ? OR c.callee_id = ?
                ORDER BY c.created_at DESC LIMIT ?""",
-            (user_id, user_id, limit),
+            (user_id, user_id, user_id, user_id, user_id, user_id, limit),
         )
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            if d.get("callee_id") == user_id and d.get("started_at") is None and d.get("outcome") in ("missed", "no_answer", "cancelled"):
+                d["status"] = "missed"
+            out.append(d)
+        return out
 
     # favourites (only people you have actually called) ---------------------------------
     def set_favourite(self, user_id: str, contact_id: str, on: bool) -> None:
@@ -246,7 +268,7 @@ class Database:
 
     def favourites(self, user_id: str) -> list[dict]:
         rows = self._exec(
-            """SELECT u.id, u.display_name, u.language, u.is_demo FROM favourites f
+            """SELECT u.id, u.display_name, u.language, u.is_demo, u.avatar FROM favourites f
                JOIN users u ON u.id = f.contact_id WHERE f.user_id = ? ORDER BY f.created_at DESC""", (user_id,))  # fmt: skip
         return [dict(r) for r in rows]
 
@@ -282,7 +304,8 @@ class Database:
         mine, other = ("sender_id", "recipient_id") if sent else ("recipient_id", "sender_id")
         ready = "" if sent else "AND v.status = 'ready'"
         rows = self._exec(
-            f"""SELECT v.*, u.display_name AS other_name, u.language AS other_language, u.is_demo AS other_is_demo
+            f"""SELECT v.*, u.display_name AS other_name, u.language AS other_language, u.is_demo AS other_is_demo,
+                       u.avatar AS other_avatar
                 FROM voicemails v LEFT JOIN users u ON u.id = v.{other}
                 WHERE v.{mine} = ? {ready} ORDER BY v.created_at DESC LIMIT ?""",
             (user_id, limit),
@@ -366,7 +389,7 @@ class Database:
 
     def get_conversation_members(self, conv_id: str) -> list[dict]:
         rows = self._exec(
-            """SELECT u.id, u.id AS user_id, u.display_name, u.username, u.language, u.is_demo, m.role, m.joined_at
+            """SELECT u.id, u.id AS user_id, u.display_name, u.username, u.language, u.is_demo, u.avatar, m.role, m.joined_at
                FROM conversation_members m
                JOIN users u ON u.id = m.user_id
                WHERE m.conversation_id = ? ORDER BY m.joined_at ASC""",
@@ -498,14 +521,18 @@ class Database:
     def get_messages(self, conv_id: str, limit: int = 60, before: float | None = None) -> list[dict]:
         if before:
             rows = self._exec(
-                """SELECT * FROM messages WHERE conversation_id = ? AND created_at < ?
-                   ORDER BY created_at DESC LIMIT ?""",
+                """SELECT m.*, COALESCE(u.display_name, m.sender_name) AS sender_name, u.avatar AS sender_avatar
+                   FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+                   WHERE m.conversation_id = ? AND m.created_at < ?
+                   ORDER BY m.created_at DESC LIMIT ?""",
                 (conv_id, before, limit),
             )
         else:
             rows = self._exec(
-                """SELECT * FROM messages WHERE conversation_id = ?
-                   ORDER BY created_at DESC LIMIT ?""",
+                """SELECT m.*, COALESCE(u.display_name, m.sender_name) AS sender_name, u.avatar AS sender_avatar
+                   FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+                   WHERE m.conversation_id = ?
+                   ORDER BY m.created_at DESC LIMIT ?""",
                 (conv_id, limit),
             )
         msgs = [dict(r) for r in rows]
@@ -590,7 +617,7 @@ class Database:
 
     def contacts(self, user_id: str) -> list[dict]:
         rows = self._exec(
-            """SELECT u.id, u.display_name, u.username, u.language, u.is_demo FROM contacts c
+            """SELECT u.id, u.display_name, u.username, u.language, u.is_demo, u.avatar FROM contacts c
                JOIN users u ON u.id = c.contact_id WHERE c.user_id = ? ORDER BY LOWER(u.display_name)""", (user_id,))  # fmt: skip
         return [dict(r) for r in rows]
 
@@ -604,7 +631,7 @@ class Database:
 
     def blocked_users(self, user_id: str) -> list[dict]:
         rows = self._exec(
-            """SELECT u.id, u.display_name, u.username, u.language, u.is_demo FROM blocks b
+            """SELECT u.id, u.display_name, u.username, u.language, u.is_demo, u.avatar FROM blocks b
                JOIN users u ON u.id = b.blocked_id WHERE b.user_id = ? ORDER BY b.created_at DESC""", (user_id,))  # fmt: skip
         return [dict(r) for r in rows]
 

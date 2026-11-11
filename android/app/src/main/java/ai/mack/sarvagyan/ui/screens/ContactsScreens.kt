@@ -390,7 +390,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                 SectionTitle("Blocked")
                 blocked.forEach { p ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Avatar(p.name, MaterialTheme.colorScheme.onSurfaceVariant, 36.dp)
+                        Avatar(p.name, MaterialTheme.colorScheme.onSurfaceVariant, 36.dp, avatar = p.avatar, useMain = false)
                         Spacer(Modifier.width(12.dp))
                         Text(p.name, Modifier.weight(1f))
                         TextButton(onClick = { scope.launch { runCatching { c.api.unblock(p.id) }; load() } }) { Text("Unblock") }
@@ -447,7 +447,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                             Modifier.fillMaxWidth().padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Avatar(m.name, LocalCallColors.current.peer, 40.dp)
+                            Avatar(m.name, LocalCallColors.current.peer, 40.dp, avatar = m.avatar, useMain = false)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(m.name, style = MaterialTheme.typography.titleMedium)
@@ -510,7 +510,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
 private fun PersonRow(p: ContactUser, language: String, onCall: () -> Unit, onVoicemail: () -> Unit, menu: List<Pair<String, () -> Unit>>) {
     var open by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Avatar(p.name, LocalCallColors.current.peer, 40.dp)
+        Avatar(p.name, LocalCallColors.current.peer, 40.dp, avatar = p.avatar, useMain = false)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(p.name, style = MaterialTheme.typography.titleMedium)
@@ -536,11 +536,20 @@ fun IncomingCallScreen(call: IncomingCall, onAnswered: () -> Unit) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     fun answer() {
+        if (busy) return
         busy = true
         scope.launch {
-            try { c.answerIncoming(); onAnswered() } catch (e: ApiException) {
-                Toast.makeText(context, e.message, Toast.LENGTH_LONG).show()
-            } finally { busy = false }
+            try {
+                c.answerIncoming()
+                onAnswered()
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                val msg = (e as? ApiException)?.message ?: "Could not connect the call."
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                c.clearIncoming(call.callId)
+            } finally {
+                busy = false
+            }
         }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -549,14 +558,18 @@ fun IncomingCallScreen(call: IncomingCall, onAnswered: () -> Unit) {
     EmeraldAnimatedBackground {
         Column(Modifier.fillMaxSize().safeDrawingPadding().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.weight(1f))
-            Avatar(call.fromName, LocalCallColors.current.peer, 112.dp)
+            Avatar(call.fromName, LocalCallColors.current.peer, 112.dp, avatar = call.fromAvatar, useMain = true)
             Spacer(Modifier.height(24.dp))
             Text(call.fromName, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
             call.fromUsername?.let { Text("@$it", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Spacer(Modifier.height(8.dp))
             val theirs = c.language(call.fromLanguage)?.name ?: call.fromLanguage
-            val mine = c.language(c.settings.value.myLanguage)?.name ?: c.settings.value.myLanguage
-            Text("Calling you · they speak $theirs, you'll hear $mine", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            val mine = c.language(c.effectiveMyLanguage())?.name ?: c.effectiveMyLanguage()
+            Text(
+                if (busy) "Connecting call…" else "Calling you · they speak $theirs, you'll hear $mine",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 RoundAction(Icons.Filled.CallEnd, "Decline", LocalCallColors.current.endCall, enabled = !busy) {

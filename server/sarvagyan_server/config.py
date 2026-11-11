@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     turn_username: str = ""
     turn_credential: SecretStr = SecretStr("")
     turn_secret: SecretStr = SecretStr("")  # coturn `static-auth-secret`: per-user credentials valid 24 h
-    ring_timeout_s: int = 30  # an unanswered direct call becomes a missed call after this
+    ring_timeout_s: int = 40  # an unanswered direct call becomes a missed call after this
     data_dir: str = "server/data"
     daily_utterance_cap: int = 5000  # generous cap per user, protects shared API credits
     daily_voicemail_cap: int = 30  # voicemails sent per user per day

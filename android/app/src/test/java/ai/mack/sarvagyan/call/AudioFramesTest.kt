@@ -67,7 +67,7 @@ class AudioFramesTest {
         val sent = mutableListOf<ByteArray>()
         var now = 0L
         val gate = EchoGate(tailMs = 0)
-        val mic = MicPipeline(gate, { now }) { sent += it }
+        val mic = MicPipeline(gate, { now }, noiseReduction = false) { sent += it }
         val chunk = Pcm.shortsToBytes(tone(16_000, 64)) // 2048 bytes = 2 frames
         mic.onSamples(chunk, 16_000, 1)
         assertEquals(2, sent.size)

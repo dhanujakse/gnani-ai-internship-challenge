@@ -133,7 +133,7 @@ fun HomeScreen(
             ) {
                 // Profile header card
                 Column(Modifier.fillMaxWidth().padding(20.dp)) {
-                    Avatar(user?.displayName ?: "?", LocalCallColors.current.me, 64.dp)
+                    Avatar(user?.displayName ?: "User", LocalCallColors.current.me, 64.dp, avatar = user?.avatar, useMain = true)
                     Spacer(Modifier.height(12.dp))
                     Text(user?.displayName ?: "User", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     user?.username?.let {
@@ -152,7 +152,7 @@ fun HomeScreen(
                 Spacer(Modifier.height(12.dp))
                 NavigationDrawerItem(
                     icon = { Icon(Icons.AutoMirrored.Filled.Chat, null) },
-                    label = { Text("Global Chat & Voicemail") },
+                    label = { Text("Chats & Voice Messages") },
                     selected = false,
                     onClick = {
                         scope.launch { drawerState.close() }
@@ -216,7 +216,7 @@ fun HomeScreen(
                     Modifier.fillMaxWidth().clickable { scope.launch { drawerState.open() } },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Avatar(user?.displayName ?: "?", LocalCallColors.current.me)
+                    Avatar(user?.displayName ?: "User", LocalCallColors.current.me, avatar = user?.avatar, useMain = false)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(user?.displayName ?: "…", style = MaterialTheme.typography.titleLarge)
@@ -284,14 +284,16 @@ fun HomeScreen(
         AppCard(Modifier.clickable(role = Role.Button, onClick = onLanguages)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Languages", style = MaterialTheme.typography.titleMedium)
+                    Text("I speak", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        LanguagePill(c.language(settings.myLanguage)?.native ?: settings.myLanguage, highlighted = true)
-                        Icon(Icons.Filled.SwapHoriz, null, Modifier.padding(horizontal = 8.dp))
-                        LanguagePill(c.language(settings.partnerLanguage)?.native ?: settings.partnerLanguage)
+                        val mine = c.language(settings.myLanguage)
+                        LanguagePill(
+                            if (mine != null) "${mine.native} · ${mine.name}" else settings.myLanguage,
+                            highlighted = true,
+                        )
                     }
-                    if (settings.autoDetect) Text("Auto-detect on", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                    if (settings.autoDetect) Text("Auto-detect secondary check on", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                 }
                 Text("Change", color = MaterialTheme.colorScheme.primary)
             }
@@ -330,7 +332,7 @@ fun HomeScreen(
             EmptyState(Icons.Filled.StarBorder, "No favourites yet", "Star someone in Recent calls. Only people you have actually called can be favourites.")
         } else {
             favourites.forEach { f ->
-                ContactRow(f.name, c.language(f.language)?.name ?: f.language, f.isDemo, starred = true,
+                ContactRow(f.name, c.language(f.language)?.name ?: f.language, f.isDemo, avatar = f.avatar, starred = true,
                     onStar = { scope.launch { runCatching { c.api.setFavourite(f.id, false) }; load() } },
                     onCall = { placeCall(f.id, f.name) }, onVoicemail = { onRecordVoicemail(f.id, f.name) })
             }
@@ -352,10 +354,10 @@ fun HomeScreen(
 
 @Composable
 private fun ContactRow(
-    name: String, language: String, demo: Boolean, starred: Boolean, onStar: () -> Unit, onCall: () -> Unit, onVoicemail: () -> Unit,
+    name: String, language: String, demo: Boolean, avatar: String?, starred: Boolean, onStar: () -> Unit, onCall: () -> Unit, onVoicemail: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Avatar(name, LocalCallColors.current.peer, 40.dp)
+        Avatar(name, LocalCallColors.current.peer, 40.dp, avatar = avatar, useMain = false)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.titleMedium)
@@ -371,17 +373,29 @@ private fun ContactRow(
 private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (Peer) -> Unit) {
     val peer = h.peer
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Avatar(peer?.name ?: "–", LocalCallColors.current.peer, 40.dp)
+        Avatar(peer?.name ?: "Nobody", LocalCallColors.current.peer, 40.dp, avatar = peer?.avatar, useMain = false)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(peer?.name ?: "Nobody joined", style = MaterialTheme.typography.titleMedium)
+            val isMissed = h.status == "missed" || h.outcome in listOf("missed", "no_answer", "cancelled")
+            val outcomeLabel = when {
+                isMissed -> "Missed call"
+                h.outcome == "declined" -> "Declined"
+                h.outcome == "busy" -> "Busy"
+                else -> null
+            }
             val meta = buildList {
+                if (outcomeLabel != null) add(outcomeLabel)
                 add(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date((h.createdAt * 1000).toLong())))
                 h.durationS?.let { add(formatDuration(it.toLong())) }
                 if (h.utterances > 0) add("${h.utterances} translated")
                 if (peer?.isDemo == true) add("demo")
             }.joinToString(" · ")
-            Text(meta, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                meta,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isMissed) LocalCallColors.current.endCall else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (peer != null) IconButton(onClick = { onVoicemail(peer) }) {
             Icon(Icons.Filled.Voicemail, contentDescription = "Leave ${peer.name ?: "them"} a voicemail")

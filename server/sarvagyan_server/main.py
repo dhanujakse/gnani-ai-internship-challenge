@@ -21,6 +21,7 @@ WebSocket:  /v1/calls/{call_id}/ws   (Authorization: Bearer <token>)
 import asyncio
 import contextlib
 import hmac
+import inspect
 import json
 import logging
 import re
@@ -32,7 +33,7 @@ from datetime import date, datetime
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -83,7 +84,18 @@ class Services:
         self.tts_cache = TtsCache(max(0, settings.tts_cache_mb) * 1024 * 1024)
         self.chat_audio_dir = self.settings.data_path / "chat_audio"
         self.chat_audio_dir.mkdir(parents=True, exist_ok=True)
+        self.avatar_dir = self.settings.data_path / "avatars"
+        self.avatar_dir.mkdir(parents=True, exist_ok=True)
         self.chat_sockets: dict[str, set[WebSocket]] = defaultdict(set)
+        self._call_acks: dict[str, dict] = {}
+
+    def delete_custom_avatar(self, avatar: str | None) -> None:
+        if avatar and avatar.startswith("custom:"):
+            fid = avatar.removeprefix("custom:")
+            if re.fullmatch(r"[0-9a-f]{32}", fid):
+                for suffix in ("", "-thumb"):
+                    with contextlib.suppress(OSError):
+                        (self.avatar_dir / f"{fid}{suffix}.webp").unlink(missing_ok=True)
 
     async def broadcast_chat_message(self, cid: str, msg: dict) -> None:
         members = self.db.get_conversation_members(cid)
@@ -194,6 +206,21 @@ class Services:
                 self.chat_sockets[user_id].discard(ws)
         return sent
 
+    async def emit_call_state(self, user_id: str, call_id: str, state: str, **extra) -> tuple[bool, str]:
+        ack_id = uuid.uuid4().hex[:12]
+        self._call_acks[ack_id] = {"user_id": user_id, "call_id": call_id, "state": state, "acked": False, "ts": time.time()}
+        if len(self._call_acks) > 2000:
+            oldest = sorted(self._call_acks, key=lambda k: self._call_acks[k]["ts"])[:500]
+            for k in oldest:
+                self._call_acks.pop(k, None)
+        sent = await self.notify_user(user_id, {"type": "call_state", "call_id": call_id, "state": state, "ack_id": ack_id, **extra})
+        return sent, ack_id
+
+    def ack_call_state(self, user_id: str, call_id: str, state: str, ack_id: str | None = None) -> None:
+        if ack_id and ack_id in self._call_acks and self._call_acks[ack_id]["user_id"] == user_id:
+            self._call_acks[ack_id]["acked"] = True
+        log.info("call_state_ack user=%s call=%s state=%s ack_id=%s", user_id[:8], call_id[:8], state, ack_id)
+
     def start_ring_timer(self, cid: str) -> None:
         async def expire() -> None:
             await asyncio.sleep(self.settings.ring_timeout_s)
@@ -206,18 +233,30 @@ class Services:
         task.add_done_callback(self._ring_tasks.discard)
 
     async def finish_ring(self, cid: str, call: dict, outcome: str) -> None:
-        """Ends a call nobody answered: declined, cancelled by the caller, or missed (timeout)."""
+        """Ends a call nobody answered: declined, busy, cancelled by caller, or missed/no_answer (timeout)."""
         ring = call.pop("ring", None)
         if ring is None:
             return
+        db_outcome = "no_answer" if outcome in ("missed", "no_answer") else outcome
+        log.info("call state transition call=%s state=ended outcome=%s", cid[:8], db_outcome)
         callee = ring["to"]
         await self.notify_user(callee, {"type": "call_cancelled", "call_id": cid, "reason": outcome,
                                         "from_id": call["host"]})  # fmt: skip
         if outcome != "cancelled":
             u = self.db.get_user(callee)
+            peer_name = u["display_name"] if u else None
             await self.notify_user(call["host"], {"type": f"call_{outcome}", "call_id": cid, "peer_id": callee,
-                                                  "peer_name": u["display_name"] if u else None})  # fmt: skip
-        self.db.mark_ended(cid, 0)
+                                                  "peer_name": peer_name})  # fmt: skip
+            await self.emit_call_state(call["host"], cid, db_outcome, peer_id=callee, peer_name=peer_name)
+        else:
+            host = self.db.get_user(call["host"])
+            await self.emit_call_state(callee, cid, "cancelled", peer_id=call["host"],
+                                       peer_name=host["display_name"] if host else None)  # fmt: skip
+        if outcome in ("missed", "no_answer"):
+            host = self.db.get_user(call["host"])
+            await self.emit_call_state(callee, cid, "no_answer", peer_id=call["host"],
+                                       peer_name=host["display_name"] if host else None)  # fmt: skip
+        self.db.mark_ended(cid, 0, outcome=db_outcome)
         self.calls.pop(cid, None)
         self.by_code.pop(call["code"], None)
         room = self.rooms.pop(cid, None)
@@ -317,7 +356,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     def public_user(u: dict) -> dict:
         return {"id": u["id"], "display_name": u["display_name"], "username": u.get("username"), "email": u["email"],
-                "is_demo": bool(u["is_demo"]), "language": u["language"],
+                "avatar": u.get("avatar"), "is_demo": bool(u["is_demo"]), "language": u["language"],
                 "allow_calls": u.get("allow_calls") or "contacts", "read_receipts": bool(u.get("read_receipts", 1)),
                 "chat_retention_days": int(u.get("chat_retention_days") or 30)}  # fmt: skip
 
@@ -440,6 +479,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         for audio_id in s.db.delete_user(user["id"]):
             with contextlib.suppress(OSError):
                 (s.chat_audio_dir / f"{audio_id}.pcm").unlink(missing_ok=True)
+        s.delete_custom_avatar(user.get("avatar"))
         for ws in list(s.chat_sockets.pop(user["id"], ())):
             with contextlib.suppress(Exception):
                 await ws.close(code=4401)
@@ -486,6 +526,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         display_name: str | None = Field(default=None, max_length=60)
         language: str | None = None
         username: str | None = None
+        avatar: str | None = Field(default=None, max_length=64)
         phone_hash: str | None = None
 
     @app.get("/v1/me")
@@ -497,6 +538,22 @@ def create_app(services: Services | None = None) -> FastAPI:
         uname = None
         if body.username is not None:
             uname = check_username_valid(body.username, s.db, exclude_id=user["id"])
+        clean_name = None
+        if body.display_name is not None:
+            clean_name = body.display_name.strip()
+            if not clean_name or len(clean_name) > 60:
+                raise HTTPException(422, "Display name must be between 1 and 60 characters.")
+        clean_avatar = None
+        if body.avatar is not None:
+            av = body.avatar.strip()
+            if av == "":
+                clean_avatar = ""
+                s.delete_custom_avatar(user.get("avatar"))
+            elif re.fullmatch(r"avatar-\d{2}", av):
+                clean_avatar = av
+                s.delete_custom_avatar(user.get("avatar"))
+            else:
+                raise HTTPException(422, "Invalid preset avatar id.")
         if body.language:
             try:
                 get_language(body.language)
@@ -506,9 +563,67 @@ def create_app(services: Services | None = None) -> FastAPI:
             raise HTTPException(422, "Chat history can be kept for 7, 30 or 365 days.")
         receipts = None if body.read_receipts is None else int(body.read_receipts)
         p_hash = body.phone_hash.strip().lower() if body.phone_hash else None
-        return public_user(s.db.update_user(user["id"], display_name=body.display_name, language=body.language,
-                                            username=uname, allow_calls=body.allow_calls, read_receipts=receipts,
-                                            chat_retention_days=body.chat_retention_days, phone_hash=p_hash))  # fmt: skip
+        return public_user(s.db.update_user(user["id"], display_name=clean_name, language=body.language,
+                                            username=uname, avatar=clean_avatar, allow_calls=body.allow_calls,
+                                            read_receipts=receipts, chat_retention_days=body.chat_retention_days,
+                                            phone_hash=p_hash))  # fmt: skip
+
+    @app.post("/v1/me/avatar", dependencies=[Depends(rate_limit("avatar-upload", 20, 3600))])
+    async def upload_avatar(request: Request, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        import io
+        from PIL import Image, ImageOps
+        raw = bytearray()
+        max_bytes = 2 * 1024 * 1024  # 2 MB raw cap
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > max_bytes:
+                raise HTTPException(413, "Avatar photo is too large (max 2 MB).")
+        if not raw:
+            raise HTTPException(422, "No image data uploaded.")
+        try:
+            with Image.open(io.BytesIO(raw)) as opened:
+                im = ImageOps.exif_transpose(opened).convert("RGBA")
+                w, h = im.size
+                if w < 16 or h < 16:
+                    raise HTTPException(422, "Image is too small.")
+                side = min(w, h)
+                left = (w - side) // 2
+                top = int((h - side) * 0.10) if h > w else 0
+                sq = im.crop((left, top, left + side, top + side))
+                main_im = sq.resize((512, 512), Image.Resampling.LANCZOS) if sq.width != 512 else sq
+                thumb_im = sq.resize((128, 128), Image.Resampling.LANCZOS) if sq.width != 128 else sq
+                main_bytes = b""
+                for q in (86, 78, 68, 56):
+                    buf = io.BytesIO()
+                    main_im.save(buf, format="WEBP", quality=q, method=6)
+                    main_bytes = buf.getvalue()
+                    if len(main_bytes) <= 100 * 1024:
+                        break
+                tbuf = io.BytesIO()
+                thumb_im.save(tbuf, format="WEBP", quality=82, method=6)
+                thumb_bytes = tbuf.getvalue()
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(422, "Unsupported or corrupted image file.") from None
+
+        fid = uuid.uuid4().hex
+        (s.avatar_dir / f"{fid}.webp").write_bytes(main_bytes)
+        (s.avatar_dir / f"{fid}-thumb.webp").write_bytes(thumb_bytes)
+        s.delete_custom_avatar(user.get("avatar"))
+        updated = s.db.update_user(user["id"], avatar=f"custom:{fid}")
+        return public_user(updated)
+
+    @app.get("/v1/avatars/{fid}")
+    def get_custom_avatar(fid: str, thumb: bool = False, _: dict = Depends(current_user), s: Services = Depends(svc)) -> StreamingResponse:
+        if not re.fullmatch(r"[0-9a-f]{32}", fid):
+            raise HTTPException(404, "Avatar not found.")
+        suffix = "-thumb" if thumb else ""
+        path = s.avatar_dir / f"{fid}{suffix}.webp"
+        if not path.is_file():
+            raise HTTPException(404, "Avatar not found.")
+        return StreamingResponse(iter([path.read_bytes()]), media_type="image/webp",
+                                 headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/v1/users/check-username", dependencies=[Depends(rate_limit("username", 60, 60))])
     def check_username(username: str, s: Services = Depends(svc)) -> dict:
@@ -626,7 +741,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     # --- contacts, blocking, who can call me -------------------------------------------------
     def contact_out(u: dict) -> dict:
         return {"id": u["id"], "name": u["display_name"], "username": u.get("username"), "language": u["language"],
-                "is_demo": bool(u["is_demo"])}  # fmt: skip
+                "avatar": u.get("avatar"), "is_demo": bool(u["is_demo"])}  # fmt: skip
 
     class AddContactIn(BaseModel):
         username: str | None = Field(default=None, max_length=40)
@@ -678,7 +793,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         return {
             "matches": [
                 {"id": u["id"], "name": u["display_name"], "username": u.get("username"),
-                 "language": u.get("language") or "ta-IN", "phone_hash": u.get("phone_hash")}
+                 "language": u.get("language") or "ta-IN", "avatar": u.get("avatar"), "phone_hash": u.get("phone_hash")}
                 for u in matched if u["id"] != user["id"]
             ]
         }
@@ -704,6 +819,9 @@ def create_app(services: Services | None = None) -> FastAPI:
             raise HTTPException(404, "That call is not ringing any more.")
         return call
 
+    class DeclineIn(BaseModel):
+        reason: str = Field(default="declined", pattern="^(declined|busy)$")
+
     @app.post("/v1/calls/direct", dependencies=[Depends(rate_limit("direct-call", 20, 60))])
     async def call_person(body: DirectCallIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
         try:
@@ -720,18 +838,36 @@ def create_app(services: Services | None = None) -> FastAPI:
         code = new_invite_code()
         while code in s.by_code:
             code = new_invite_code()
+        # Check if callee is already in an active call room or currently ringing
+        callee_busy = any(callee["id"] in r.participants for r in s.rooms.values()) or any(
+            (c.get("ring") or {}).get("to") == callee["id"] for c in s.calls.values()
+        )
+        s.db.insert_call(cid, code, user["id"], callee_id=callee["id"])
+        s.db.add_participant(cid, user["id"], body.language)
+        if callee_busy:
+            s.db.mark_ended(cid, 0, outcome="busy")
+            log.info("direct call busy call=%s callee=%s", cid[:8], callee["id"][:8])
+            await s.notify_user(user["id"], {"type": "call_busy", "call_id": cid, "peer_id": callee["id"],
+                                             "peer_name": callee["display_name"]})  # fmt: skip
+            await s.emit_call_state(user["id"], cid, "busy", peer_id=callee["id"], peer_name=callee["display_name"])
+            return {**call_info(cid, {"code": code, "participants": {user["id"]: body.language}}),
+                    "ringing": False, "reachable": True, "call_state": "busy",
+                    "peer_id": callee["id"], "peer_name": callee["display_name"]}
         s.calls[cid] = {"code": code, "host": user["id"], "participants": {user["id"]: body.language},
                         "created": time.time(), "ring": {"to": callee["id"], "state": "ringing"}}  # fmt: skip
         s.by_code[code] = cid
-        s.db.insert_call(cid, code, user["id"])
-        s.db.add_participant(cid, user["id"], body.language)
         reachable = await s.notify_user(callee["id"], {
             "type": "incoming_call", "call_id": cid, "expires_in": s.settings.ring_timeout_s,
             "from": {"id": user["id"], "name": user["display_name"], "username": user.get("username"),
-                     "language": body.language}})  # fmt: skip
+                     "language": body.language, "avatar": user.get("avatar")}})  # fmt: skip
+        if reachable:
+            await s.emit_call_state(user["id"], cid, "ringing", peer_id=callee["id"], peer_name=callee["display_name"])
+        else:
+            await s.emit_call_state(user["id"], cid, "unavailable", peer_id=callee["id"], peer_name=callee["display_name"])
         s.start_ring_timer(cid)
         log.info("direct call ringing call=%s reachable=%s", cid[:8], reachable)
         return {**call_info(cid, s.calls[cid]), "ringing": True, "reachable": reachable,
+                "call_state": "ringing" if reachable else "unavailable",
                 "peer_id": callee["id"], "peer_name": callee["display_name"]}  # fmt: skip
 
     @app.post("/v1/calls/{cid}/answer")
@@ -742,18 +878,21 @@ def create_app(services: Services | None = None) -> FastAPI:
             raise HTTPException(422, str(exc)) from None
         call = ringing_call(cid, user, s, "callee")
         call.pop("ring")
+        log.info("call state transition call=%s state=accepted callee=%s", cid[:8], user["id"][:8])
         call["participants"][user["id"]] = body.language
         s.db.add_participant(cid, user["id"], body.language)
         await s.notify_user(call["host"], {"type": "call_answered", "call_id": cid})
+        await s.emit_call_state(call["host"], cid, "answered", peer_id=user["id"], peer_name=user["display_name"])
         await s.notify_user(user["id"], {"type": "call_cancelled", "call_id": cid, "reason": "answered_elsewhere"},
                             skip_session=user["session_id"])  # fmt: skip
         host = s.db.get_user(call["host"])
-        return {**call_info(cid, call), "peer_id": call["host"], "peer_name": host["display_name"] if host else None}
+        return {**call_info(cid, call), "call_state": "answered", "peer_id": call["host"], "peer_name": host["display_name"] if host else None}
 
     @app.post("/v1/calls/{cid}/decline")
-    async def decline_call(cid: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+    async def decline_call(cid: str, body: DeclineIn | None = Body(default=None), user: dict = Depends(current_user),
+                           s: Services = Depends(svc)) -> dict:  # fmt: skip
         call = ringing_call(cid, user, s, "callee")
-        await s.finish_ring(cid, call, "declined")
+        await s.finish_ring(cid, call, body.reason if body else "declined")
         return {"ok": True}
 
     @app.post("/v1/calls/{cid}/cancel")
@@ -768,17 +907,19 @@ def create_app(services: Services | None = None) -> FastAPI:
         items = []
         for row in s.db.history(user["id"]):
             dur = int(row["ended_at"] - row["started_at"]) if row["ended_at"] and row["started_at"] else None
-            items.append({"call_id": row["id"], "status": row["status"], "created_at": row["created_at"],
-                          "duration_s": dur, "utterances": row["utterances"], "my_language": row["my_language"],
+            items.append({"call_id": row["id"], "status": row["status"], "outcome": row.get("outcome"),
+                          "created_at": row["created_at"], "duration_s": dur, "utterances": row["utterances"],
+                          "my_language": row["my_language"],
                           "peer": ({"id": row["peer_id"], "name": row["peer_name"], "language": row["peer_language"],
-                                    "is_demo": bool(row["peer_is_demo"]), "favourite": row["peer_id"] in favs}
+                                    "is_demo": bool(row["peer_is_demo"]), "avatar": row.get("peer_avatar"),
+                                    "favourite": row["peer_id"] in favs}
                                    if row["peer_id"] else None)})  # fmt: skip
         return {"calls": items}
 
     @app.get("/v1/contacts/favourites")
     def favourites(user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
         return {"contacts": [{"id": f["id"], "name": f["display_name"], "language": f["language"],
-                              "is_demo": bool(f["is_demo"])} for f in s.db.favourites(user["id"])]}  # fmt: skip
+                              "avatar": f.get("avatar"), "is_demo": bool(f["is_demo"])} for f in s.db.favourites(user["id"])]}  # fmt: skip
 
     @app.put("/v1/contacts/favourites/{contact_id}")
     def add_favourite(contact_id: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
@@ -799,7 +940,7 @@ def create_app(services: Services | None = None) -> FastAPI:
                 "duration_ms": v["duration_ms"], "source_lang": v["source_lang"], "target_lang": v["target_lang"],
                 "original": v["original"], "translation": v["translation"], "error": v["error"],
                 "contact": {"id": other, "name": v["other_name"] or "Deleted account", "language": v["other_language"],
-                            "is_demo": bool(v["other_is_demo"])}}  # fmt: skip
+                            "avatar": v.get("other_avatar"), "is_demo": bool(v["other_is_demo"])}}  # fmt: skip
 
     def purge_old(s: Services) -> None:
         s.db.purge_voicemails(time.time() - vm.RETENTION_S)
@@ -1103,6 +1244,48 @@ def create_app(services: Services | None = None) -> FastAPI:
         return StreamingResponse(iter([data]), media_type="application/octet-stream",
                                  headers={"X-Sample-Rate": str(vm.SAMPLE_RATE)})
 
+    @app.get("/v1/chat/messages/{mid}/translated-audio")
+    async def get_chat_translated_audio(mid: str, user: dict = Depends(current_user), s: Services = Depends(svc)) -> StreamingResponse:
+        msg = s.db.get_message(mid)
+        if msg is None or msg.get("deleted_at") or not s.db.is_conversation_member(msg["conversation_id"], user["id"]):
+            raise HTTPException(404, "Message not found.")
+        orig = (msg.get("original_text") or "").strip()
+        if not orig or orig == "[Voice Message]":
+            raise HTTPException(422, "No transcript available to speak for this voice message.")
+        src_lang = msg.get("source_lang") or "en-IN"
+        target_lang = user.get("language") or "en-IN"
+        if target_lang.split("-")[0].lower() == src_lang.split("-")[0].lower():
+            text_to_speak = orig
+        else:
+            cached = s.db.get_cached_translation(mid, target_lang)
+            if cached:
+                text_to_speak = cached
+            else:
+                text_to_speak = await s.translator.translate(orig, src_lang, target_lang)
+                s.db.store_cached_translation(mid, target_lang, text_to_speak)
+        from sarvagyan_server.languages import voice_for
+        voice = voice_for(target_lang, None)
+        cache_key = s.tts_cache.key(text_to_speak, target_lang, voice, 1.0)
+        cached_pcm = s.tts_cache.get(cache_key)
+        if cached_pcm is not None:
+            return StreamingResponse(iter(cached_pcm), media_type="application/octet-stream",
+                                     headers={"X-Sample-Rate": str(vm.SAMPLE_RATE)})
+        synth = s.synthesizer_factory()
+        chunks: list[bytes] = []
+        try:
+            async for chunk in synth.synthesize(text_to_speak, target_lang, voice, 1.0):
+                chunks.append(chunk)
+        finally:
+            close_fn = getattr(synth, "close", None)
+            if close_fn is not None:
+                res = close_fn()
+                if inspect.isawaitable(res):
+                    await res
+        if chunks:
+            s.tts_cache.put(cache_key, chunks)
+        return StreamingResponse(iter(chunks), media_type="application/octet-stream",
+                                 headers={"X-Sample-Rate": str(vm.SAMPLE_RATE)})
+
     @app.post("/v1/chat/conversations/{cid}/members")
     def add_member(cid: str, body: dict, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
         role = s.db.get_member_role(cid, user["id"])
@@ -1129,7 +1312,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     async def chat_socket(ws: WebSocket) -> None:
         s: Services = app.state.services
         # the token comes only in the Authorization header, never in the URL (URLs end up in logs)
-        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip() or ws.query_params.get("token") or ""
+        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip()
         user = s.user_for_token(auth_token)
         if user is None:
             await ws.close(code=4401, reason="unauthorized")
@@ -1154,6 +1337,13 @@ def create_app(services: Services | None = None) -> FastAPI:
                     cid = event.get("conversation_id")
                     if cid and s.db.is_conversation_member(cid, user["id"]):
                         await s.broadcast_chat_typing(cid, user["id"], user["display_name"])
+                elif kind == "call_ack":
+                    cid = str(event.get("call_id") or "")
+                    state = str(event.get("state") or "")
+                    ack_id = event.get("ack_id")
+                    if cid and state:
+                        s.ack_call_state(user["id"], cid, state, str(ack_id) if ack_id else None)
+                        await ws.send_text(json.dumps({"type": "call_ack_received", "call_id": cid, "state": state, "ack_id": ack_id}))
                 elif kind == "ping":
                     await ws.send_text(json.dumps({"type": "pong", "t": event.get("t")}))
         except (WebSocketDisconnect, asyncio.TimeoutError, RuntimeError):
@@ -1167,7 +1357,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     @app.websocket("/v1/calls/{call_id}/ws")
     async def call_socket(ws: WebSocket, call_id: str) -> None:
         s: Services = app.state.services
-        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip() or ws.query_params.get("token") or ""
+        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip()
         user = s.user_for_token(auth_token)
         call = s.calls.get(call_id)
         if user is None:
@@ -1193,7 +1383,7 @@ def create_app(services: Services | None = None) -> FastAPI:
                 await ws.close(code=4400, reason="expected hello")
                 return
             part = Participant(user_id=user["id"], name=user["display_name"],
-                               language=call["participants"][user["id"]])  # fmt: skip
+                               language=call["participants"][user["id"]], avatar=user.get("avatar"))  # fmt: skip
             try:
                 part.apply({k: v for k, v in first.items() if k != "type"})
             except ValueError as exc:

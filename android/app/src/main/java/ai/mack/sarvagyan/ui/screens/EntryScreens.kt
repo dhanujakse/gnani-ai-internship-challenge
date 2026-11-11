@@ -227,7 +227,7 @@ private fun LanguagePickerField(
 }
 
 @Composable
-fun AuthScreen(onSignedIn: () -> Unit) {
+fun AuthScreen(onSignedIn: (isNewAccount: Boolean) -> Unit) {
     val c = LocalContext.current.container
     val scope = rememberCoroutineScope()
     val supportedLanguages by c.languages.collectAsStateWithLifecycle()
@@ -282,7 +282,7 @@ fun AuthScreen(onSignedIn: () -> Unit) {
         }
     }
 
-    fun run(block: suspend () -> ai.mack.sarvagyan.data.Session) {
+    fun run(isNewAccount: Boolean, block: suspend () -> ai.mack.sarvagyan.data.Session) {
         busy = true
         error = null
         scope.launch {
@@ -291,7 +291,7 @@ fun AuthScreen(onSignedIn: () -> Unit) {
                 val session = block()
                 c.saveSession(session)
                 c.refreshLanguages()
-                onSignedIn()
+                onSignedIn(isNewAccount)
             } catch (e: ApiException) {
                 error = e.message
             } finally {
@@ -363,11 +363,11 @@ fun AuthScreen(onSignedIn: () -> Unit) {
             if (tab == 0) "Sign in" else "Create account",
             onClick = {
                 if (tab == 0) {
-                    run { c.api.login(email, password) }
+                    run(false) { c.api.login(email, password) }
                 } else {
                     val cleanUsername = username.trim().removePrefix("@")
                     val chosen = accountLanguage!!
-                    run {
+                    run(true) {
                         val sess = c.api.register(email, password, name.ifBlank { email.substringBefore('@') }, cleanUsername, language = chosen)
                         c.settingsStore.update { it.copy(myLanguage = chosen) }
                         sess
@@ -393,7 +393,7 @@ fun AuthScreen(onSignedIn: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         SecondaryButton("Continue as guest (demo)", {
             val chosen = guestLanguage!!
-            run {
+            run(true) {
                 val sess = c.api.demo(guestName.ifBlank { "Guest" }, language = chosen)
                 c.settingsStore.update { it.copy(myLanguage = chosen) }
                 sess

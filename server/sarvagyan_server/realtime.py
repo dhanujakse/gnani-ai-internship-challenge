@@ -103,6 +103,7 @@ class Participant:
     user_id: str
     name: str
     language: str = "ta-IN"
+    avatar: str | None = None
     auto_detect: bool = False
     voice: str | None = None
     speed: float = 1.0
@@ -114,7 +115,7 @@ class Participant:
     joined_order: int = 0
 
     def public(self) -> dict:
-        return {"user_id": self.user_id, "name": self.name, "language": self.language,
+        return {"user_id": self.user_id, "name": self.name, "language": self.language, "avatar": self.avatar,
                 "auto_detect": self.auto_detect, "muted": self.muted, "connected": self.connected}  # fmt: skip
 
     def apply(self, cfg: dict) -> None:
@@ -501,9 +502,12 @@ class CallRoom:
         self.dispatchers[part.user_id] = PlaybackDispatcher(self, part)
         self.pipelines[part.user_id] = SpeakerPipeline(self, part)
         peer = self.peer_of(part.user_id)
+        log.info("call state transition call=%s state=connecting user=%s has_peer=%s",
+                 self.call_id[:8], part.user_id[:8], bool(peer and peer.connected))
         await self.send(part, {"type": "joined", "call_id": self.call_id, "you": part.public(),
                                "peer": peer.public() if peer else None})  # fmt: skip
         if peer is not None and peer.connected:
+            log.info("call state transition call=%s state=connected", self.call_id[:8])
             if self.started_at is None:
                 self.started_at = time.time()
                 if self._on_started:

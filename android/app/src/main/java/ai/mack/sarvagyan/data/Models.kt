@@ -10,6 +10,7 @@ data class User(
     @SerialName("display_name") val displayName: String,
     val username: String? = null,
     val email: String? = null,
+    val avatar: String? = null,
     @SerialName("is_demo") val isDemo: Boolean = false,
     val language: String = "ta-IN",
     @SerialName("allow_calls") val allowCalls: String = "contacts", // who can call me: contacts | everyone
@@ -62,6 +63,7 @@ data class CallInfo(
     val participants: Int = 1,
     val ringing: Boolean = false, // a direct call to a person (rings their phone), not an invite-code call
     val reachable: Boolean = true, // false: their app is not connected right now
+    @SerialName("call_state") val callState: String? = null,
     @SerialName("peer_id") val peerId: String? = null,
     @SerialName("peer_name") val peerName: String? = null,
 )
@@ -72,6 +74,7 @@ data class Peer(
     val name: String? = null,
     val language: String? = null,
     @SerialName("is_demo") val isDemo: Boolean = false,
+    val avatar: String? = null,
     val favourite: Boolean = false,
 )
 
@@ -79,6 +82,7 @@ data class Peer(
 data class CallRecord(
     @SerialName("call_id") val callId: String,
     val status: String,
+    val outcome: String? = null,
     @SerialName("created_at") val createdAt: Double,
     @SerialName("duration_s") val durationS: Int? = null,
     val utterances: Int = 0,
@@ -90,7 +94,7 @@ data class CallRecord(
 data class HistoryResponse(val calls: List<CallRecord>)
 
 @Serializable
-data class Contact(val id: String, val name: String, val language: String, @SerialName("is_demo") val isDemo: Boolean = false)
+data class Contact(val id: String, val name: String, val language: String, val avatar: String? = null, @SerialName("is_demo") val isDemo: Boolean = false)
 
 @Serializable
 data class ContactsResponse(val contacts: List<Contact>)
@@ -127,6 +131,7 @@ data class VoicemailContact(
     val id: String,
     val name: String,
     val language: String? = null,
+    val avatar: String? = null,
     @SerialName("is_demo") val isDemo: Boolean = false,
 )
 
@@ -176,6 +181,7 @@ data class ConversationMember(
     val id: String,
     @SerialName("display_name") val displayName: String,
     val username: String? = null,
+    val avatar: String? = null,
     val language: String = "ta-IN",
     val role: String = "member",
     @SerialName("joined_at") val joinedAt: Double = 0.0,
@@ -232,6 +238,7 @@ data class ContactUser(
     val id: String,
     val name: String,
     val username: String? = null,
+    val avatar: String? = null,
     val language: String = "ta-IN",
     @SerialName("is_demo") val isDemo: Boolean = false,
 )
@@ -244,6 +251,7 @@ data class MatchedContact(
     val id: String,
     val name: String,
     val username: String? = null,
+    val avatar: String? = null,
     val language: String = "ta-IN",
     @SerialName("phone_hash") val phoneHash: String? = null,
 )

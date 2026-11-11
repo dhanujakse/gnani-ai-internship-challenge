@@ -19,6 +19,9 @@ class AppSocket(private val http: OkHttpClient, private val json: Json, private 
 
     @Volatile var connected = false
         private set
+    @Volatile private var activeSocket: CallSocket? = null
+
+    fun send(msg: JsonObject): Boolean = activeSocket?.send(msg) == true
 
     /** Runs until the calling coroutine is cancelled (sign-out). */
     suspend fun run() {
@@ -27,6 +30,7 @@ class AppSocket(private val http: OkHttpClient, private val json: Json, private 
             val token = api.freshToken()
             if (token == null) { delay(5_000); continue }
             val socket = CallSocket(http, json)
+            activeSocket = socket
             try {
                 socket.connect(api.appSocketUrl(), token).collect { ev ->
                     when (ev) {
@@ -36,6 +40,7 @@ class AppSocket(private val http: OkHttpClient, private val json: Json, private 
                     }
                 }
             } finally {
+                if (activeSocket === socket) activeSocket = null
                 connected = false
                 socket.close()
             }
@@ -53,4 +58,5 @@ data class IncomingCall(
     val fromUsername: String?,
     val fromLanguage: String,
     val expiresInS: Int,
+    val fromAvatar: String? = null,
 )

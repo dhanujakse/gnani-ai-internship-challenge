@@ -1,9 +1,11 @@
 package ai.mack.sarvagyan.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,6 +19,7 @@ import ai.mack.sarvagyan.ui.screens.ActiveCallScreen
 import ai.mack.sarvagyan.ui.screens.AuthScreen
 import ai.mack.sarvagyan.ui.screens.CallSetupScreen
 import ai.mack.sarvagyan.ui.screens.CallSummaryScreen
+import ai.mack.sarvagyan.ui.screens.ChooseAvatarScreen
 import ai.mack.sarvagyan.ui.screens.ContactsScreen
 import ai.mack.sarvagyan.ui.screens.IncomingCallScreen
 import ai.mack.sarvagyan.ui.screens.ChatConversationScreen
@@ -25,17 +28,17 @@ import ai.mack.sarvagyan.ui.screens.HelpScreen
 import ai.mack.sarvagyan.ui.screens.HomeScreen
 import ai.mack.sarvagyan.ui.screens.LanguageScreen
 import ai.mack.sarvagyan.ui.screens.OnboardingScreen
-import ai.mack.sarvagyan.ui.screens.RecordVoicemailScreen
 import ai.mack.sarvagyan.ui.screens.SettingsScreen
 import ai.mack.sarvagyan.ui.screens.PrivacyPolicyScreen
 import ai.mack.sarvagyan.ui.screens.SplashScreen
-import ai.mack.sarvagyan.ui.screens.VoicemailScreen
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 object Routes {
     @Serializable data object Splash
     @Serializable data object Onboarding
     @Serializable data object Auth
+    @Serializable data class ChooseAvatar(val onboarding: Boolean = false)
     @Serializable data object Home
     @Serializable data object Languages
     @Serializable data class CallSetup(val join: Boolean, val code: String? = null)
@@ -47,22 +50,40 @@ object Routes {
     @Serializable data object Help
     @Serializable data object Contacts
     @Serializable data class Voicemail(val tab: Int = 0)
-    @Serializable data class RecordVoicemail(val toId: String? = null, val toName: String? = null)
     @Serializable data class ChatConversation(val conversationId: String)
 }
 
 @Composable
 fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed: () -> Unit) {
-    val incoming by LocalContext.current.container.incomingCall.collectAsStateWithLifecycle()
+    val container = LocalContext.current.container
+    val incoming by container.incomingCall.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
         Screens(nav, pendingJoinCode, onJoinCodeConsumed)
         // someone is calling: the ringing screen covers whatever is open
-        incoming?.let { call -> IncomingCallScreen(call, onAnswered = { nav.navigate(Routes.ActiveCall) }) }
+        incoming?.let { call ->
+            IncomingCallScreen(call, onAnswered = {
+                nav.navigate(Routes.ActiveCall) { launchSingleTop = true }
+                container.clearIncoming(call.callId)
+            })
+        }
     }
 }
 
 @Composable
 private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed: () -> Unit) {
+    val context = LocalContext.current
+    val c = context.container
+    val scope = rememberCoroutineScope()
+    fun openChatWithUser(userId: String) {
+        scope.launch {
+            try {
+                val res = c.api.directChat(userId = userId)
+                nav.navigate(Routes.ChatConversation(res.conversation.id))
+            } catch (e: Exception) {
+                Toast.makeText(context, e.message ?: "Could not open chat.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     NavHost(nav, startDestination = Routes.Splash) {
         composable<Routes.Splash> {
             SplashScreen(onDone = { dest ->
@@ -73,7 +94,23 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
             OnboardingScreen(onFinish = { nav.navigate(Routes.Auth) { popUpTo(Routes.Onboarding) { inclusive = true } } })
         }
         composable<Routes.Auth> {
-            AuthScreen(onSignedIn = { nav.navigate(Routes.Home) { popUpTo(Routes.Auth) { inclusive = true } } })
+            AuthScreen(onSignedIn = { isNew ->
+                val dest: Any = if (isNew) Routes.ChooseAvatar(onboarding = true) else Routes.Home
+                nav.navigate(dest) { popUpTo(Routes.Auth) { inclusive = true } }
+            })
+        }
+        composable<Routes.ChooseAvatar> { entry ->
+            val args = entry.toRoute<Routes.ChooseAvatar>()
+            ChooseAvatarScreen(
+                isOnboarding = args.onboarding,
+                onDone = {
+                    if (args.onboarding) {
+                        nav.navigate(Routes.Home) { popUpTo(0) }
+                    } else {
+                        nav.popBackStack()
+                    }
+                },
+            )
         }
         composable<Routes.Home> {
             LaunchedEffect(pendingJoinCode) {
@@ -91,7 +128,7 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
                 onResumeCall = { nav.navigate(Routes.ActiveCall) },
                 onVoicemail = { nav.navigate(Routes.Voicemail()) },
                 onContacts = { nav.navigate(Routes.Contacts) },
-                onRecordVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
+                onRecordVoicemail = { id, _ -> openChatWithUser(id) },
                 onSignedOut = { nav.navigate(Routes.Auth) { popUpTo(Routes.Home) { inclusive = true } } },
             )
         }
@@ -109,14 +146,14 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
             ActiveCallScreen(
                 onFinished = { callId -> nav.navigate(Routes.Summary(callId)) { popUpTo(Routes.Home) } },
                 onLeaveScreen = { nav.popBackStack(Routes.Home, inclusive = false) },
-                onVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) { popUpTo(Routes.Home) } },
+                onVoicemail = { id, _ -> nav.popBackStack(Routes.Home, inclusive = false); openChatWithUser(id) },
             )
         }
         composable<Routes.Contacts> {
             ContactsScreen(
                 onBack = { nav.popBackStack() },
                 onCallStarted = { nav.navigate(Routes.ActiveCall) },
-                onVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
+                onVoicemail = { id, _ -> openChatWithUser(id) },
             )
         }
         composable<Routes.Summary> { entry ->
@@ -135,7 +172,6 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
                 initialTab = entry.toRoute<Routes.Voicemail>().tab,
                 onBack = { nav.popBackStack() },
                 onOpenConversation = { cid -> nav.navigate(Routes.ChatConversation(cid)) },
-                onRecordVoicemail = { id, name -> nav.navigate(Routes.RecordVoicemail(id, name)) },
             )
         }
         composable<Routes.ChatConversation> { entry ->
@@ -143,15 +179,6 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
             ChatConversationScreen(
                 conversationId = args.conversationId,
                 onBack = { nav.popBackStack() },
-            )
-        }
-        composable<Routes.RecordVoicemail> { entry ->
-            val args = entry.toRoute<Routes.RecordVoicemail>()
-            RecordVoicemailScreen(
-                toId = args.toId, toName = args.toName,
-                onBack = { nav.popBackStack() },
-                onLanguages = { nav.navigate(Routes.Languages) },
-                onSent = { nav.navigate(Routes.Voicemail(tab = 1)) { popUpTo(Routes.Home) } },
             )
         }
     }
@@ -168,5 +195,6 @@ private fun SettingsPageFor(nav: NavHostController, group: String?) {
         onSignedOut = { nav.navigate(Routes.Auth) { popUpTo(0) } },
         onContacts = { nav.navigate(Routes.Contacts) },
         onPrivacyPolicy = { nav.navigate(Routes.PrivacyPolicy) },
+        onChooseAvatar = { nav.navigate(Routes.ChooseAvatar(onboarding = false)) },
     )
 }

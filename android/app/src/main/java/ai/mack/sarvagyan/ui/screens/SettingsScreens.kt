@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
@@ -123,13 +125,8 @@ fun LanguageScreen(onBack: () -> Unit) {
                 }, label = { Text("${l.native} · ${l.name}") })
             }
         }
-        SectionTitle("They speak (default for new calls)")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            langs.forEach { l ->
-                FilterChip(selected = s.partnerLanguage == l.code, onClick = { update { it.copy(partnerLanguage = l.code) } }, label = { Text("${l.native} · ${l.name}") })
-            }
-        }
-        Text("Each person picks their own language when they join; this is only a reminder for invitations.",
+        Spacer(Modifier.height(6.dp))
+        Text("The other person sets their own speaking language; Sarvagyan exchanges languages automatically during calls.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
         SettingSwitch("Detect my language automatically", "Useful if you switch languages while talking (Gnani Prisma v3.0 auto-detect).", s.autoDetect) { on ->
@@ -155,7 +152,7 @@ fun LanguageScreen(onBack: () -> Unit) {
 @Composable
 fun SettingsScreen(
     group: String?, onBack: () -> Unit, onOpenGroup: (String) -> Unit, onLanguages: () -> Unit, onHelp: () -> Unit,
-    onSignedOut: () -> Unit, onContacts: () -> Unit, onPrivacyPolicy: () -> Unit,
+    onSignedOut: () -> Unit, onContacts: () -> Unit, onPrivacyPolicy: () -> Unit, onChooseAvatar: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val c = context.container
@@ -163,6 +160,10 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val s by c.settings.collectAsStateWithLifecycle()
     val user by c.user.collectAsStateWithLifecycle()
+    var nameDraft by remember(user?.displayName) { mutableStateOf(user?.displayName ?: "") }
+    var nameError by remember { mutableStateOf<String?>(null) }
+    var nameSaved by remember { mutableStateOf(false) }
+    var nameBusy by remember { mutableStateOf(false) }
     var usernameDraft by remember(user?.username) { mutableStateOf(user?.username ?: "") }
     var usernameError by remember { mutableStateOf<String?>(null) }
     var usernameSaved by remember { mutableStateOf(false) }
@@ -177,7 +178,7 @@ fun SettingsScreen(
 
     ScreenScaffold(settingsGroups.firstOrNull { it.id == group }?.title ?: "Settings", onBack) {
         if (group == null) {
-            SettingsHub(user?.displayName, user?.username, onOpen = onOpenGroup)
+            SettingsHub(user?.displayName, user?.username, user?.avatar, onOpen = onOpenGroup)
             Spacer(Modifier.height(16.dp))
             SecondaryButton("Sign out", { c.activeCall.value?.end(); c.signOut(); onSignedOut() }, Modifier.fillMaxWidth())
             Spacer(Modifier.height(24.dp))
@@ -187,9 +188,68 @@ fun SettingsScreen(
             "account" -> {
         SectionTitle("Profile and username")
         AppCard {
-            Text(user?.displayName ?: "User", style = MaterialTheme.typography.titleMedium)
-            Text(user?.email ?: (if (user?.isDemo == true) "Guest account" else ""), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                ai.mack.sarvagyan.ui.components.Avatar(user?.displayName ?: "User", LocalCallColors.current.me, 72.dp, avatar = user?.avatar, useMain = true)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(user?.displayName ?: "User", style = MaterialTheme.typography.titleMedium)
+                    Text(user?.email ?: (if (user?.isDemo == true) "Guest account" else ""), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = onChooseAvatar, contentPadding = PaddingValues(0.dp)) {
+                        Text("Change avatar")
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = nameDraft,
+                onValueChange = {
+                    if (it.length <= 60) {
+                        nameDraft = it
+                        nameError = null
+                        nameSaved = false
+                    }
+                },
+                label = { Text("Display name") },
+                placeholder = { Text("Your name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            nameError?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (nameSaved) {
+                Spacer(Modifier.height(4.dp))
+                Text("Display name updated!", color = LocalCallColors.current.success, style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(8.dp))
+            SecondaryButton("Save name", {
+                val trimmed = nameDraft.trim()
+                if (trimmed.isEmpty()) {
+                    nameError = "Name cannot be empty."
+                    return@SecondaryButton
+                }
+                if (trimmed.length > 60) {
+                    nameError = "Name must be 60 characters or less."
+                    return@SecondaryButton
+                }
+                nameBusy = true
+                nameError = null
+                nameSaved = false
+                scope.launch {
+                    try {
+                        val updated = c.api.updateMe(name = trimmed)
+                        c.user.value = updated
+                        nameDraft = updated.displayName
+                        nameSaved = true
+                    } catch (e: Exception) {
+                        nameError = (e as? ApiException)?.message ?: e.message
+                    } finally {
+                        nameBusy = false
+                    }
+                }
+            }, enabled = nameDraft.trim().isNotEmpty() && nameDraft.trim() != (user?.displayName ?: "") && !nameBusy)
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
             OutlinedTextField(
                 value = usernameDraft,
                 onValueChange = {
@@ -499,10 +559,10 @@ val settingsGroups = listOf(
 )
 
 @Composable
-private fun SettingsHub(name: String?, username: String?, onOpen: (String) -> Unit) {
+private fun SettingsHub(name: String?, username: String?, avatar: String?, onOpen: (String) -> Unit) {
     AppCard(Modifier.clickable(role = Role.Button, onClick = { onOpen("account") })) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ai.mack.sarvagyan.ui.components.Avatar(name ?: "?", LocalCallColors.current.me)
+            ai.mack.sarvagyan.ui.components.Avatar(name ?: "User", LocalCallColors.current.me, avatar = avatar, useMain = false)
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(name ?: "Your account", style = MaterialTheme.typography.titleMedium)

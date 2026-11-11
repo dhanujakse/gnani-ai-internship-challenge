@@ -2,6 +2,7 @@ package ai.mack.sarvagyan
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import ai.mack.sarvagyan.call.AppSocket
 import ai.mack.sarvagyan.call.CallSession
 import ai.mack.sarvagyan.call.CallStatus
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.JsonObject
 import ai.mack.sarvagyan.data.ApiClient
 import ai.mack.sarvagyan.data.ApiException
+import ai.mack.sarvagyan.data.AvatarStore
 import ai.mack.sarvagyan.data.Session
 import ai.mack.sarvagyan.data.AppSettings
 import ai.mack.sarvagyan.data.CallInfo
@@ -35,6 +37,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -52,9 +55,12 @@ class AppContainer(private val context: Context) {
     val settings: StateFlow<AppSettings> = settingsStore.settings.stateIn(scope, SharingStarted.Eagerly, AppSettings())
     val tokens = TokenStore(context)
     val transcripts = TranscriptStore(context, json)
+    val avatars = AvatarStore(context, http, { settings.value.serverUrl }) { tokens.get() }
     val api = ApiClient(http, json, baseUrl = { settings.value.serverUrl }, token = { tokens.get() },
         refresh = { stale -> refreshSession(stale) })
     private val refreshLock = Mutex()
+    private val answerLock = Mutex()
+    @Volatile private var answeringCallId: String? = null
 
     val user = MutableStateFlow<User?>(null)
     val languages = MutableStateFlow(FallbackLanguages)
@@ -123,51 +129,157 @@ class AppContainer(private val context: Context) {
 
     private fun inCall(): Boolean = activeCall.value?.state?.value?.status?.let { it != CallStatus.Ended && it != CallStatus.Failed } == true
 
-    private fun onAppEvent(ev: JsonObject) {
-        val callId = ev.str("call_id") ?: return
-        when (ev.str("type")) {
-            "incoming_call" -> {
-                if (inCall()) { scope.launch { runCatching { api.declineCall(callId) } }; return } // busy
-                val from = ev.objOrNull("from") ?: return
-                val call = IncomingCall(callId, from.str("id") ?: return, from.str("name") ?: "Someone", from.str("username"),
-                    from.str("language") ?: "en-IN", ev.int("expires_in") ?: 30)
-                incomingCall.value = call
-                ringer.start(call.fromName, call.expiresInS * 1000L)
+    fun effectiveMyLanguage(): String =
+        settings.value.myLanguage.takeIf { it.isNotBlank() }
+            ?: user.value?.language?.takeIf { it.isNotBlank() }
+            ?: "en-IN"
+
+    private fun sendCallAck(callId: String, state: String, ackId: String? = null) {
+        val payload = kotlinx.serialization.json.buildJsonObject {
+            put("type", kotlinx.serialization.json.JsonPrimitive("call_ack"))
+            put("call_id", kotlinx.serialization.json.JsonPrimitive(callId))
+            put("state", kotlinx.serialization.json.JsonPrimitive(state))
+            if (ackId != null) put("ack_id", kotlinx.serialization.json.JsonPrimitive(ackId))
+        }
+        appSocket.send(payload)
+    }
+
+    private fun applyCallStateFeedback(callId: String, state: String, peerName: String?) {
+        val session = activeCall.value?.takeIf { it.info.callId == callId } ?: return
+        val name = peerName ?: session.info.peerName ?: "They"
+        when (state) {
+            "declined" -> {
+                Log.i("CallLifecycle", "state=ended direction=outgoing callId=$callId reason=declined")
+                session.markUnanswered("Declined", "$name declined the call.")
             }
-            "call_cancelled" -> if (incomingCall.value?.callId == callId) {
-                incomingCall.value = null
-                ringer.stop()
+            "busy" -> {
+                Log.i("CallLifecycle", "state=ended direction=outgoing callId=$callId reason=busy")
+                session.markUnanswered("Busy", "$name is on another call.")
             }
-            "call_declined", "call_missed" -> activeCall.value?.takeIf { it.info.callId == callId }?.let { session ->
-                val name = ev.str("peer_name") ?: session.info.peerName ?: "They"
-                session.markUnanswered(if (ev.str("type") == "call_declined") "$name declined the call." else "$name didn't answer.")
+            "no_answer", "missed" -> {
+                Log.i("CallLifecycle", "state=ended direction=outgoing callId=$callId reason=no_answer")
+                session.markUnanswered("No answer", "$name didn't answer.")
+            }
+            "unavailable" -> {
+                Log.i("CallLifecycle", "state=ended direction=outgoing callId=$callId reason=unavailable")
+                session.markUnanswered("Unavailable", "$name is offline.")
+            }
+            "answered" -> {
+                Log.i("CallLifecycle", "state=accepted direction=outgoing callId=$callId")
             }
         }
     }
 
-    /** Rings a person; the call screen shows "Ringing" until they answer, decline or miss it. */
-    suspend fun callPerson(id: String, name: String): CallSession {
-        val lang = settings.value.myLanguage
-        return startCall(api.callPerson(id, lang), lang)
+    private fun onAppEvent(ev: JsonObject) {
+        val callId = ev.str("call_id") ?: return
+        val ackId = ev.str("ack_id")
+        when (ev.str("type")) {
+            "incoming_call" -> {
+                sendCallAck(callId, "ringing", ackId)
+                if (inCall()) {
+                    Log.i("CallLifecycle", "state=ended callId=$callId reason=busy_auto_decline")
+                    scope.launch { runCatching { api.declineCall(callId, reason = "busy") } }
+                    return
+                }
+                val from = ev.objOrNull("from") ?: return
+                val call = IncomingCall(callId, from.str("id") ?: return, from.str("name") ?: "Someone", from.str("username"),
+                    from.str("language") ?: "en-IN", ev.int("expires_in") ?: 40, fromAvatar = from.str("avatar"))
+                Log.i("CallLifecycle", "state=ringing direction=incoming callId=$callId from=${call.fromName}")
+                incomingCall.value = call
+                ringer.start(call.fromName, call.expiresInS * 1000L)
+            }
+            "call_state" -> {
+                val state = ev.str("state") ?: return
+                sendCallAck(callId, state, ackId)
+                if ((state == "cancelled" || state == "no_answer") && incomingCall.value?.callId == callId) {
+                    Log.i("CallLifecycle", "state=ended direction=incoming callId=$callId reason=$state")
+                    incomingCall.value = null
+                    ringer.stop()
+                }
+                applyCallStateFeedback(callId, state, ev.str("peer_name"))
+            }
+            "call_cancelled" -> if (incomingCall.value?.callId == callId) {
+                val reason = ev.str("reason") ?: "cancelled"
+                sendCallAck(callId, reason, ackId)
+                if (answeringCallId == callId && reason == "answered_elsewhere") return
+                Log.i("CallLifecycle", "state=ended direction=incoming callId=$callId reason=$reason")
+                incomingCall.value = null
+                ringer.stop()
+            }
+            "call_declined" -> {
+                sendCallAck(callId, "declined", ackId)
+                applyCallStateFeedback(callId, "declined", ev.str("peer_name"))
+            }
+            "call_busy" -> {
+                sendCallAck(callId, "busy", ackId)
+                applyCallStateFeedback(callId, "busy", ev.str("peer_name"))
+            }
+            "call_missed" -> {
+                sendCallAck(callId, "no_answer", ackId)
+                applyCallStateFeedback(callId, "no_answer", ev.str("peer_name"))
+            }
+            "call_answered" -> {
+                sendCallAck(callId, "answered", ackId)
+                applyCallStateFeedback(callId, "answered", ev.str("peer_name"))
+            }
+        }
     }
 
-    suspend fun answerIncoming(): CallSession {
-        val call = incomingCall.value ?: throw ApiException(404, "The call has ended.")
-        ringer.stop()
-        incomingCall.value = null
-        val lang = settings.value.myLanguage
-        return startCall(api.answerCall(call.callId, lang), lang)
+    /** Rings a person; the call screen shows "Ringing" until they answer, decline, busy, no answer, or unavailable. */
+    suspend fun callPerson(id: String, name: String): CallSession {
+        val lang = effectiveMyLanguage()
+        Log.i("CallLifecycle", "state=ringing direction=outgoing to=$name lang=$lang")
+        val info = api.callPerson(id, lang)
+        val session = startCall(info, lang)
+        when {
+            info.callState == "busy" -> session.markUnanswered("Busy", "${info.peerName ?: name} is on another call.")
+            !info.reachable || info.callState == "unavailable" -> {
+                session.markUnanswered("Unavailable", "${info.peerName ?: name} is offline.")
+                scope.launch { runCatching { api.cancelCall(info.callId) } }
+            }
+        }
+        return session
+    }
+
+    /**
+     * Runs accept + CallSession setup on the container scope so dismissing [IncomingCallScreen]
+     * can never cancel the coroutine mid-flight. Caller must call [clearIncoming] after navigating.
+     */
+    suspend fun answerIncoming(): CallSession = withContext(scope.coroutineContext) {
+        answerLock.withLock {
+            val call = incomingCall.value ?: throw ApiException(404, "The call has ended.")
+            answeringCallId = call.callId
+            Log.i("CallLifecycle", "state=accepted direction=incoming callId=${call.callId}")
+            ringer.stop()
+            val lang = effectiveMyLanguage()
+            try {
+                val info = api.answerCall(call.callId, lang)
+                startCall(info, lang)
+            } catch (t: Throwable) {
+                Log.w("CallLifecycle", "state=ended direction=incoming callId=${call.callId} reason=accept_failed error=${t.message}")
+                if (incomingCall.value?.callId == call.callId) incomingCall.value = null
+                throw t
+            } finally {
+                if (answeringCallId == call.callId) answeringCallId = null
+            }
+        }
+    }
+
+    fun clearIncoming(callId: String) {
+        if (incomingCall.value?.callId == callId) incomingCall.value = null
     }
 
     suspend fun declineIncoming() {
         val call = incomingCall.value ?: return
+        Log.i("CallLifecycle", "state=ended direction=incoming callId=${call.callId} reason=declined_by_me")
         ringer.stop()
         incomingCall.value = null
         runCatching { api.declineCall(call.callId) }
     }
 
     suspend fun startCall(info: CallInfo, myLanguage: String, initialRoute: ai.mack.sarvagyan.call.AudioRoute? = null): CallSession {
-        activeCall.value?.end(notifyServer = true)
+        activeCall.value?.takeIf { it.info.callId != info.callId }?.end(notifyServer = true)
+        Log.i("CallLifecycle", "state=connecting callId=${info.callId} ringing=${info.ringing} lang=$myLanguage")
         val session = CallSession(context, api, http, json, transcripts, info, settings.value, myLanguage)
         activeCall.value = session
         CallService.start(context)

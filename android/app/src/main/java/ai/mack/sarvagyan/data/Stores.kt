@@ -32,7 +32,6 @@ data class AppSettings(
     val onboarded: Boolean = false,
     val serverUrl: String = BuildConfig.DEFAULT_SERVER_URL,
     val myLanguage: String = "en-IN",
-    val partnerLanguage: String = "en-IN",
     val autoDetect: Boolean = false,
     val voice: String? = null, // voice used for translations YOU hear (in your language)
     val speed: Float = 1.0f,
@@ -53,7 +52,6 @@ class SettingsStore(private val context: Context) {
         val onboarded = booleanPreferencesKey("onboarded")
         val server = stringPreferencesKey("server_url")
         val myLang = stringPreferencesKey("my_language")
-        val partnerLang = stringPreferencesKey("partner_language")
         val auto = booleanPreferencesKey("auto_detect")
         val voice = stringPreferencesKey("voice")
         val speed = floatPreferencesKey("speed")
@@ -75,7 +73,6 @@ class SettingsStore(private val context: Context) {
             onboarded = p[K.onboarded] ?: false,
             serverUrl = p[K.server] ?: BuildConfig.DEFAULT_SERVER_URL,
             myLanguage = p[K.myLang] ?: "en-IN",
-            partnerLanguage = p[K.partnerLang] ?: "en-IN",
             autoDetect = p[K.auto] ?: false,
             voice = p[K.voice],
             speed = p[K.speed] ?: 1.0f,
@@ -100,7 +97,6 @@ class SettingsStore(private val context: Context) {
             p[K.onboarded] = next.onboarded
             p[K.server] = next.serverUrl.trim()
             p[K.myLang] = next.myLanguage
-            p[K.partnerLang] = next.partnerLanguage
             p[K.auto] = next.autoDetect
             if (next.voice != null) p[K.voice] = next.voice else p.remove(K.voice)
             p[K.speed] = next.speed

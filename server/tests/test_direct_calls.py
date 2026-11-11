@@ -164,3 +164,60 @@ def test_ringing_needs_sign_in_on_the_socket(env) -> None:
     with pytest.raises(WebSocketDisconnect):
         with env.client.websocket_connect("/v1/chat/ws") as ws:
             ws.receive_text()
+
+
+def test_call_states_acks_busy_unavailable_and_missed_history(env) -> None:
+    (ta, a), (tb, b), (tc, c) = people(env, 3)
+    for tk in (tb, tc):
+        env.client.patch("/v1/me", json={"allow_calls": "everyone"}, headers=env.auth(tk))
+
+    # 1. Unavailable / offline state when B has no socket
+    with phone(env, ta) as ring_a:
+        res = env.client.post("/v1/calls/direct", json={"to": b["id"]}, headers=env.auth(ta)).json()
+        assert res["call_state"] == "unavailable" and res["reachable"] is False
+        st_ev = next_event(ring_a, "call_state")
+        assert st_ev["state"] == "unavailable" and st_ev["call_id"] == res["call_id"]
+        ring_a.send_json({"type": "call_ack", "call_id": res["call_id"], "state": "unavailable", "ack_id": st_ev["ack_id"]})
+        assert next_event(ring_a, "call_ack_received")["ack_id"] == st_ev["ack_id"]
+        assert env.client.post(f"/v1/calls/{res['call_id']}/cancel", headers=env.auth(ta)).status_code == 200
+
+    # 2. Ringing -> Ack -> Declined
+    with phone(env, ta) as ring_a, phone(env, tb) as ring_b:
+        res = env.client.post("/v1/calls/direct", json={"to": b["id"]}, headers=env.auth(ta)).json()
+        assert res["call_state"] == "ringing"
+        assert next_event(ring_a, "call_state")["state"] == "ringing"
+        inc = next_event(ring_b, "incoming_call")
+        assert inc["expires_in"] == 40
+        ring_b.send_json({"type": "call_ack", "call_id": res["call_id"], "state": "ringing"})
+        assert next_event(ring_b, "call_ack_received")["state"] == "ringing"
+        assert env.client.post(f"/v1/calls/{res['call_id']}/decline", json={"reason": "declined"}, headers=env.auth(tb)).status_code == 200
+        dec = next_event(ring_a, "call_state")
+        assert dec["state"] == "declined" and dec["peer_name"] == "P1"
+
+    # 3. Busy state when callee is already in an active call or ringing
+    with phone(env, ta) as ring_a, phone(env, tb) as ring_b, phone(env, tc) as ring_c:
+        call1 = env.client.post("/v1/calls/direct", json={"to": b["id"]}, headers=env.auth(ta)).json()
+        next_event(ring_b, "incoming_call")
+        # C calls B while B is already ringing (busy)
+        call2 = env.client.post("/v1/calls/direct", json={"to": b["id"]}, headers=env.auth(tc)).json()
+        assert call2["call_state"] == "busy"
+        busy_ev = next_event(ring_c, "call_state")
+        assert busy_ev["state"] == "busy" and busy_ev["call_id"] == call2["call_id"]
+        # A cancels call1 -> B stops ringing and gets missed call in history
+        assert env.client.post(f"/v1/calls/{call1['call_id']}/cancel", headers=env.auth(ta)).status_code == 200
+        assert next_event(ring_b, "call_cancelled")["reason"] == "cancelled"
+
+    hist_b = env.client.get("/v1/calls/history", headers=env.auth(tb)).json()["calls"]
+    assert any(h["call_id"] == call1["call_id"] and h["status"] == "missed" and h["peer"]["id"] == a["id"] for h in hist_b)
+
+    # 4. No answer timeout -> callee gets missed call in history
+    env.services.settings.ring_timeout_s = 0
+    with phone(env, ta) as ring_a, phone(env, tb) as ring_b:
+        call3 = env.client.post("/v1/calls/direct", json={"to": b["id"]}, headers=env.auth(ta)).json()
+        st = next_event(ring_a, "call_state")
+        if st["state"] == "ringing":
+            st = next_event(ring_a, "call_state")
+        assert st["state"] == "no_answer"
+        assert next_event(ring_b, "call_cancelled")["reason"] == "missed"
+    hist_b2 = env.client.get("/v1/calls/history", headers=env.auth(tb)).json()["calls"]
+    assert any(h["call_id"] == call3["call_id"] and h["status"] == "missed" for h in hist_b2)
