@@ -83,6 +83,7 @@ _COLUMNS = [
     ("users", "avatar", "TEXT"),
     ("messages", "expires_at", "REAL"),
     ("messages", "deleted_at", "REAL"),
+    ("messages", "tag", "TEXT"),
     ("conversation_members", "last_delivered_at", "REAL NOT NULL DEFAULT 0"),
     ("calls", "callee_id", "TEXT"),
     ("calls", "outcome", "TEXT"),
@@ -91,6 +92,13 @@ _SCHEMA += """
 CREATE TABLE IF NOT EXISTS hidden_messages (
     user_id TEXT NOT NULL, message_id TEXT NOT NULL, PRIMARY KEY (user_id, message_id)
 );
+CREATE TABLE IF NOT EXISTS device_tokens (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'android',
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS device_tokens_user ON device_tokens(user_id);
 """
 
 
@@ -157,7 +165,7 @@ class Database:
             rows = self._exec("SELECT 1 FROM users WHERE username_norm = ? LIMIT 1", (u,))
         return len(rows) == 0
 
-    def search_users(self, query: str, current_user_id: str, limit: int = 25) -> list[dict]:
+    def search_users(self, query: str, current_user_id: str, limit: int = 10) -> list[dict]:
         cleaned = query.strip().lstrip("@").strip().lower()
         if not cleaned:
             return []
@@ -165,11 +173,11 @@ class Database:
         substr = f"%{cleaned}%"
         rows = self._exec(
             """SELECT id, display_name, username, avatar FROM users
-               WHERE (username_norm = ? OR username_norm LIKE ? OR LOWER(display_name) LIKE ?) AND id != ?
+               WHERE (username_norm = ? OR username_norm LIKE ? OR LOWER(username) LIKE ? OR LOWER(display_name) LIKE ?) AND id != ?
                  AND id NOT IN (SELECT blocked_id FROM blocks WHERE user_id = ?)
                  AND id NOT IN (SELECT user_id FROM blocks WHERE blocked_id = ?)
                ORDER BY (CASE WHEN username_norm = ? THEN 0 WHEN username_norm LIKE ? THEN 1 ELSE 2 END), display_name ASC LIMIT ?""",
-            (cleaned, prefix, substr, current_user_id, current_user_id, current_user_id, cleaned, prefix, limit),
+            (cleaned, prefix, substr, substr, current_user_id, current_user_id, current_user_id, cleaned, prefix, limit),
         )
         return [{"id": r["id"], "display_name": r["display_name"], "username": r["username"], "avatar": r["avatar"]} for r in rows]
 
@@ -250,6 +258,18 @@ class Database:
             d = dict(r)
             if d.get("callee_id") == user_id and d.get("started_at") is None and d.get("outcome") in ("missed", "no_answer", "cancelled"):
                 d["status"] = "missed"
+            if d.get("status") == "missed" and d.get("peer_id"):
+                vm_rows = self._exec(
+                    """SELECT 1 FROM messages m
+                       JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 0
+                       JOIN conversation_members me ON me.conversation_id = c.id AND me.user_id = ?
+                       WHERE m.sender_id = ? AND m.tag = 'voicemail' AND m.deleted_at IS NULL AND m.created_at >= ?
+                       LIMIT 1""",
+                    (user_id, d["peer_id"], float(d.get("created_at") or 0) - 5.0),
+                )
+                d["has_voicemail"] = bool(vm_rows)
+            else:
+                d["has_voicemail"] = False
             out.append(d)
         return out
 
@@ -445,7 +465,8 @@ class Database:
         return result
 
     def insert_message(self, conv_id: str, sender_id: str, sender_name: str, source_lang: str,
-                       original_text: str, audio_id: str | None = None, duration_ms: int = 0) -> dict:
+                       original_text: str, audio_id: str | None = None, duration_ms: int = 0,
+                       tag: str | None = None) -> dict:
         mid = uuid.uuid4().hex
         now = time.time()
         days = self._exec("""SELECT MIN(u.chat_retention_days) AS d FROM conversation_members m
@@ -453,16 +474,22 @@ class Database:
         keep_days = int(days[0]["d"]) if days and days[0]["d"] else 30
         self._exec(
             """INSERT INTO messages (id, conversation_id, sender_id, sender_name, source_lang,
-                          original_text, audio_id, duration_ms, created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                          original_text, audio_id, duration_ms, created_at, expires_at, tag)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (mid, conv_id, sender_id, sender_name, source_lang, original_text.strip(), audio_id, duration_ms, now,
-             now + keep_days * 86400),
+             now + keep_days * 86400, tag),
         )
         self._exec("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id))
         self._exec("UPDATE conversation_members SET last_read_at = ? WHERE conversation_id = ? AND user_id = ?",
                    (now, conv_id, sender_id))
         rows = self._exec("SELECT * FROM messages WHERE id = ?", (mid,))
         return dict(rows[0])
+
+    def update_message_transcript(self, mid: str, original_text: str, source_lang: str) -> dict | None:
+        self._exec("UPDATE messages SET original_text = ?, source_lang = ? WHERE id = ?",
+                   (original_text.strip(), source_lang, mid))
+        self._exec("DELETE FROM message_translations WHERE message_id = ?", (mid,))
+        return self.get_message(mid)
 
     def conversation_of_audio(self, audio_id: str) -> str | None:
         rows = self._exec("SELECT conversation_id FROM messages WHERE audio_id = ?", (audio_id,))
@@ -667,5 +694,30 @@ class Database:
         self._exec("DELETE FROM call_participants WHERE user_id = ?", (uid,))
         self._exec("DELETE FROM calls WHERE id NOT IN (SELECT call_id FROM call_participants)")
         self._exec("DELETE FROM sessions WHERE user_id = ?", (uid,))
+        self._exec("DELETE FROM device_tokens WHERE user_id = ?", (uid,))
         self._exec("DELETE FROM users WHERE id = ?", (uid,))
         return clips
+
+    # push device tokens --------------------------------------------------------------------
+    def upsert_device_token(self, user_id: str, token: str, platform: str = "android") -> None:
+        self._exec(
+            """INSERT INTO device_tokens (token, user_id, platform, updated_at) VALUES (?, ?, ?, ?)
+               ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, platform = excluded.platform, updated_at = excluded.updated_at""",
+            (token, user_id, platform, time.time()),
+        )
+
+    def delete_device_token(self, user_id: str, token: str | None = None) -> None:
+        if token:
+            self._exec("DELETE FROM device_tokens WHERE user_id = ? AND token = ?", (user_id, token))
+        else:
+            self._exec("DELETE FROM device_tokens WHERE user_id = ?", (user_id,))
+
+    def get_device_tokens(self, user_ids: list[str]) -> dict[str, list[str]]:
+        if not user_ids:
+            return {}
+        marks = ",".join("?" * len(user_ids))
+        rows = self._exec(f"SELECT user_id, token FROM device_tokens WHERE user_id IN ({marks})", tuple(user_ids))
+        out: dict[str, list[str]] = {}
+        for r in rows:
+            out.setdefault(r["user_id"], []).append(r["token"])
+        return out

@@ -98,6 +98,19 @@ class AppContainer(private val context: Context) {
         tokens.set(session.token)
         tokens.setRefresh(session.refreshToken.ifEmpty { null })
         user.value = session.user
+        syncPushToken()
+    }
+
+    fun syncPushToken() {
+        runCatching {
+            if (com.google.firebase.FirebaseApp.getApps(context).isNotEmpty()) {
+                com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { tok ->
+                    if (!tok.isNullOrBlank() && user.value != null) {
+                        scope.launch { runCatching { api.registerPushToken(tok) } }
+                    }
+                }
+            }
+        }
     }
 
     /** Swaps the refresh token for a new pair. One refresh at a time; a refresh another caller just did counts. */
@@ -229,7 +242,29 @@ class AppContainer(private val context: Context) {
     suspend fun callPerson(id: String, name: String): CallSession {
         val lang = effectiveMyLanguage()
         Log.i("CallLifecycle", "state=ringing direction=outgoing to=$name lang=$lang")
-        val info = api.callPerson(id, lang)
+        val info = try {
+            api.callPerson(id, lang)
+        } catch (e: ApiException) {
+            if (e.status == 403) {
+                Log.i("CallLifecycle", "state=ended direction=outgoing to=$name reason=unavailable_policy")
+                val denied = CallInfo(
+                    callId = "denied-${System.currentTimeMillis()}",
+                    inviteCode = "",
+                    inviteLink = "",
+                    appLink = "",
+                    ringing = true,
+                    reachable = false,
+                    callState = "unavailable",
+                    peerId = id,
+                    peerName = name,
+                )
+                val session = CallSession(context, api, http, json, transcripts, denied, settings.value, lang)
+                activeCall.value = session
+                session.markUnanswered("Unavailable", "$name is unavailable.")
+                return session
+            }
+            throw e
+        }
         val session = startCall(info, lang)
         when {
             info.callState == "busy" -> session.markUnanswered("Busy", "${info.peerName ?: name} is on another call.")

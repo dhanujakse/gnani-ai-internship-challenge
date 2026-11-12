@@ -347,7 +347,7 @@ class CallSession(
 
     fun setRoute(route: AudioRoute) {
         router.select(route)
-        _state.update { it.copy(route = router.current() ?: route) }
+        _state.update { it.copy(route = route, routes = router.available()) }
     }
 
     fun setOriginalVolume(v: Float) {

@@ -23,6 +23,14 @@ class AppSocket(private val http: OkHttpClient, private val json: Json, private 
 
     fun send(msg: JsonObject): Boolean = activeSocket?.send(msg) == true
 
+    fun sendChatFocus(conversationId: String?) {
+        val obj = kotlinx.serialization.json.buildJsonObject {
+            put("type", kotlinx.serialization.json.JsonPrimitive("chat_focus"))
+            if (conversationId != null) put("conversation_id", kotlinx.serialization.json.JsonPrimitive(conversationId))
+        }
+        send(obj)
+    }
+
     /** Runs until the calling coroutine is cancelled (sign-out). */
     suspend fun run() {
         var backoffMs = 1_000L

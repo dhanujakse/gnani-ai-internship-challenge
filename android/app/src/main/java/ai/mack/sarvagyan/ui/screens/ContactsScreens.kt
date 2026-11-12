@@ -5,16 +5,21 @@ import android.content.Context
 import android.content.Intent
 import android.provider.ContactsContract
 import java.security.MessageDigest
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.LinearProgressIndicator
 import ai.mack.sarvagyan.data.MatchedContact
+import ai.mack.sarvagyan.data.UserSearchResult
 import ai.mack.sarvagyan.ui.components.PrimaryButton
 import ai.mack.sarvagyan.ui.components.SecondaryButton
 import ai.mack.sarvagyan.ui.theme.Brand
@@ -25,6 +30,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,6 +55,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -64,8 +71,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -82,6 +93,7 @@ import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.SectionTitle
 import ai.mack.sarvagyan.ui.theme.LocalCallColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -241,8 +253,13 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     var contacts by remember { mutableStateOf<List<ContactUser>?>(null) }
     var blocked by remember { mutableStateOf<List<ContactUser>>(emptyList()) }
     var username by remember { mutableStateOf("") }
+    var suggestions by remember { mutableStateOf<List<UserSearchResult>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var searchAttempted by remember { mutableStateOf(false) }
+    var discoverQuery by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
+    val usernameFocus = remember { FocusRequester() }
     val placeCall = rememberPlaceCall(onCallStarted)
 
     var hasContactPermission by remember {
@@ -252,6 +269,11 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     var matchedUsers by remember { mutableStateOf<List<MatchedContact>>(emptyList()) }
     var syncingContacts by remember { mutableStateOf(false) }
     var syncProgress by remember { mutableStateOf<String?>(null) }
+
+    fun mergeContact(added: ContactUser) {
+        val current = contacts ?: emptyList()
+        contacts = (current.filterNot { it.id == added.id } + added).sortedBy { it.name.lowercase() }
+    }
 
     suspend fun load() {
         try {
@@ -263,7 +285,32 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
             if (contacts == null) contacts = emptyList()
         }
     }
-    LaunchedEffect(Unit) { load() }
+    LaunchedEffect(Unit) {
+        load()
+        runCatching { c.api.me() }.onSuccess { c.user.value = it }
+    }
+
+    LaunchedEffect(username) {
+        val clean = username.trim().removePrefix("@").trim()
+        if (clean.isEmpty()) {
+            suggestions = emptyList()
+            searching = false
+            searchAttempted = false
+            return@LaunchedEffect
+        }
+        searching = true
+        searchAttempted = false
+        delay(300)
+        try {
+            suggestions = c.api.searchUsers(clean).users.take(10)
+            searchAttempted = true
+        } catch (_: ApiException) {
+            suggestions = emptyList()
+            searchAttempted = true
+        } finally {
+            searching = false
+        }
+    }
 
     fun syncPhone() {
         if (!hasContactPermission) return
@@ -313,196 +360,345 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
         }
     }
 
-    fun add() {
-        val name = username.trim().removePrefix("@")
-        if (name.isEmpty()) return
+    fun addPerson(targetUsername: String? = null, targetUserId: String? = null, clearInput: Boolean = false) {
+        val clean = targetUsername?.trim()?.removePrefix("@")?.trim()?.takeIf { it.isNotEmpty() }
+        if (clean == null && targetUserId.isNullOrBlank()) return
         adding = true
         scope.launch {
-            try { c.api.addContact(name); username = ""; load() } catch (e: ApiException) { error = e.message } finally { adding = false }
+            try {
+                val added = c.api.addContact(username = clean, userId = targetUserId)
+                mergeContact(added)
+                if (clearInput) {
+                    username = ""
+                    suggestions = emptyList()
+                    searchAttempted = false
+                }
+                error = null
+                load()
+            } catch (e: ApiException) {
+                error = e.message
+            } finally {
+                adding = false
+            }
         }
     }
 
-    ScreenScaffold("Contacts", onBack) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            listOf("My Contacts", "Discover from Phone").forEachIndexed { i, label ->
-                SegmentedButton(
-                    selected = tab == i,
-                    onClick = {
-                        tab = i
-                        if (i == 1 && hasContactPermission && phoneContacts.isEmpty()) {
-                            syncPhone()
-                        }
-                    },
-                    shape = SegmentedButtonDefaults.itemShape(i, 2)
-                ) {
-                    Text(label)
-                }
-            }
+    fun add() {
+        val name = username.trim().removePrefix("@").trim()
+        if (name.isEmpty()) return
+        addPerson(targetUsername = name, clearInput = true)
+    }
+
+    fun String.normFilter(): String = lowercase().replace(" ", "").replace("-", "")
+
+    val phoneByHash = remember(phoneContacts) { phoneContacts.associate { it.hash to it.number } }
+    val matchedHashes = remember(matchedUsers) { matchedUsers.mapNotNull { it.phoneHash }.toSet() }
+    val unmatched = remember(phoneContacts, matchedHashes) { phoneContacts.filter { it.hash !in matchedHashes } }
+
+    val normQuery = remember(discoverQuery) { discoverQuery.normFilter() }
+    val filteredMatched = remember(matchedUsers, phoneByHash, normQuery) {
+        if (normQuery.isEmpty()) matchedUsers
+        else matchedUsers.filter { m ->
+            m.name.normFilter().contains(normQuery) ||
+                (m.username?.normFilter()?.contains(normQuery) == true) ||
+                (m.phoneHash?.let { phoneByHash[it]?.normFilter()?.contains(normQuery) } == true)
         }
-        Spacer(Modifier.height(16.dp))
+    }
+    val filteredUnmatched = remember(unmatched, normQuery) {
+        if (normQuery.isEmpty()) unmatched
+        else unmatched.filter { u ->
+            u.name.normFilter().contains(normQuery) || u.number.normFilter().contains(normQuery)
+        }
+    }
 
-        error?.let { Spacer(Modifier.height(8.dp)); ErrorBanner(it, onDismiss = { error = null }) }
-
-        if (tab == 0) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    username, { username = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '@' }.take(25) },
-                    label = { Text("Add by @username") }, singleLine = true, modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }),
-                )
-                Spacer(Modifier.width(8.dp))
-                IconButton(onClick = { add() }, enabled = username.isNotBlank() && !adding) { Icon(Icons.Filled.PersonAdd, "Add contact") }
+    EmeraldAnimatedBackground {
+        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Brand.HighlightAccent) }
+                Text("Contacts", style = MaterialTheme.typography.titleLarge, color = Brand.PrimaryText)
             }
 
-            SectionTitle("Your contacts")
-            val list = contacts
-            when {
-                list == null -> Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                list.isEmpty() -> EmptyState(Icons.Filled.People, "No contacts yet",
-                    "Add people by their @username. Contacts can call you; others can't, unless you allow everyone below.")
-                else -> list.forEach { p ->
-                    PersonRow(p, c.language(p.language)?.name ?: p.language,
-                        onCall = { placeCall(p.id, p.name) },
-                        onVoicemail = { onVoicemail(p.id, p.name) },
-                        menu = listOf(
-                            "Remove from contacts" to { scope.launch { runCatching { c.api.removeContact(p.id) }; load() } },
-                            "Block" to { scope.launch { runCatching { c.api.block(p.id) }; load() } },
-                        ))
-                }
-            }
-
-            SectionTitle("Who can call me")
-            AppCard {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("contacts" to "My contacts", "everyone" to "Everyone").forEach { (value, label) ->
-                        FilterChip(selected = (user?.allowCalls ?: "contacts") == value, onClick = {
-                            scope.launch {
-                                try { c.user.value = c.api.updateMe(allowCalls = value) } catch (e: ApiException) { error = e.message }
-                            }
-                        }, label = { Text(label) })
-                    }
-                }
-                Text("People you've already had a call with can always call you back. Blocked people never can.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            if (blocked.isNotEmpty()) {
-                SectionTitle("Blocked")
-                blocked.forEach { p ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Avatar(p.name, MaterialTheme.colorScheme.onSurfaceVariant, 36.dp, avatar = p.avatar, useMain = false)
-                        Spacer(Modifier.width(12.dp))
-                        Text(p.name, Modifier.weight(1f))
-                        TextButton(onClick = { scope.launch { runCatching { c.api.unblock(p.id) }; load() } }) { Text("Unblock") }
-                    }
-                }
-            }
-        } else {
-            // Tab 1: Discover from Phone Contacts
-            if (!hasContactPermission) {
-                AppCard {
-                    Text("Discover Friends from Contacts", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Sarvagyan securely discovers which of your phone contacts are registered on the platform without storing your contacts on our server. Phone numbers are hashed using SHA-256 directly on your device before matching.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    PrimaryButton(
-                        "Sync Phone Contacts",
-                        onClick = { contactPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Device Contacts (${phoneContacts.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = { syncPhone() }, enabled = !syncingContacts) {
-                        Icon(Icons.Filled.Refresh, "Refresh Contacts")
-                    }
-                }
-                if (syncingContacts) {
-                    syncProgress?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp))
-                    }
-                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
-                }
-
-                SectionTitle("On Sarvagyan (${matchedUsers.size})")
-                if (matchedUsers.isEmpty() && !syncingContacts) {
-                    EmptyState(
-                        Icons.Filled.People,
-                        "None of your contacts found",
-                        "None of your phone contacts are on Sarvagyan yet. Send them an invite below!"
-                    )
-                } else {
-                    matchedUsers.forEach { m ->
-                        val isExistingContact = contacts?.any { it.id == m.id } == true
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Avatar(m.name, LocalCallColors.current.peer, 40.dp, avatar = m.avatar, useMain = false)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(m.name, style = MaterialTheme.typography.titleMedium)
-                                val sub = listOfNotNull(m.username?.let { "@$it" }, c.language(m.language)?.name ?: m.language).joinToString(" · ")
-                                Text(sub, style = MaterialTheme.typography.bodyMedium, color = Brand.HighlightAccent)
-                            }
-                            IconButton(onClick = { onVoicemail(m.id, m.name) }) {
-                                Icon(Icons.Filled.Chat, "Chat with ${m.name}")
-                            }
-                            IconButton(onClick = { placeCall(m.id, m.name) }) {
-                                Icon(Icons.Filled.Call, "Call ${m.name}")
-                            }
-                            if (!isExistingContact) {
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        runCatching { c.api.addContact(m.username ?: m.name) }
-                                        load()
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+            ) {
+                item(key = "tabs") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        listOf("My Contacts", "Discover from Phone").forEachIndexed { i, label ->
+                            val selected = tab == i
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                    .clickable {
+                                        tab = i
+                                        if (i == 1 && hasContactPermission && phoneContacts.isEmpty()) {
+                                            syncPhone()
+                                        }
                                     }
-                                }) {
-                                    Icon(Icons.Filled.PersonAdd, "Add to contacts")
+                                    .padding(vertical = 10.dp, horizontal = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    label,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                error?.let { err ->
+                    item(key = "error") {
+                        ErrorBanner(err, onDismiss = { error = null })
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+
+                if (tab == 0) {
+                    item(key = "add_by_username") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                username, { username = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '@' || ch == ' ' }.take(25) },
+                                label = { Text("Add by @username") }, singleLine = true,
+                                modifier = Modifier.weight(1f).focusRequester(usernameFocus),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            IconButton(
+                                onClick = { usernameFocus.requestFocus() },
+                                enabled = username.isBlank() && !adding,
+                            ) { Icon(Icons.Filled.PersonAdd, "Add contact") }
+                        }
+                    }
+
+                    val cleanQuery = username.trim().removePrefix("@").trim()
+                    if (cleanQuery.isNotEmpty()) {
+                        item(key = "username_suggestions") {
+                            Spacer(Modifier.height(8.dp))
+                            when {
+                                searching -> Text("Searching…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                                suggestions.isEmpty() && searchAttempted -> Text("No user found", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                                suggestions.isNotEmpty() -> AppCard {
+                                    suggestions.forEachIndexed { idx, s ->
+                                        val isAdded = contacts?.any { it.id == s.id } == true
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .then(
+                                                    if (!isAdded && !adding) Modifier.clickable {
+                                                        addPerson(targetUsername = s.username, targetUserId = s.id, clearInput = true)
+                                                    } else Modifier
+                                                )
+                                                .padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Avatar(s.displayName, LocalCallColors.current.peer, 36.dp, avatar = s.avatar, useMain = false)
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(s.displayName, style = MaterialTheme.typography.titleMedium)
+                                                s.username?.let { Text("@$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                            }
+                                            if (isAdded) {
+                                                Text("Added", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                        if (idx < suggestions.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    item(key = "your_contacts_header") { SectionTitle("Your contacts") }
+
+                    val list = contacts
+                    when {
+                        list == null -> item(key = "loading") { Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        list.isEmpty() -> item(key = "empty") {
+                            EmptyState(Icons.Filled.People, "No contacts yet",
+                                "Add people by their @username. Contacts can call you; others can't, unless you allow everyone below.")
+                        }
+                        else -> items(list, key = { "contact_${it.id}" }) { p ->
+                            PersonRow(p, c.language(p.language)?.name ?: p.language,
+                                onCall = { placeCall(p.id, p.name) },
+                                onVoicemail = { onVoicemail(p.id, p.name) },
+                                menu = listOf(
+                                    "Remove from contacts" to { scope.launch { runCatching { c.api.removeContact(p.id) }; load() } },
+                                    "Block" to { scope.launch { runCatching { c.api.block(p.id) }; load() } },
+                                ))
+                        }
+                    }
+
+                    item(key = "who_can_call_me") {
+                        SectionTitle("Who can call me")
+                        AppCard {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("contacts" to "My contacts", "everyone" to "Everyone").forEach { (value, label) ->
+                                    FilterChip(selected = (user?.allowCalls ?: "contacts") == value, onClick = {
+                                        scope.launch {
+                                            try { c.user.value = c.api.updateMe(allowCalls = value) } catch (e: ApiException) { error = e.message }
+                                        }
+                                    }, label = { Text(label) })
+                                }
+                            }
+                            Text("My contacts: only people in your contacts list can call you. Everyone: anyone not blocked can call you.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    if (blocked.isNotEmpty()) {
+                        item(key = "blocked_header") { SectionTitle("Blocked") }
+                        items(blocked, key = { "blocked_${it.id}" }) { p ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Avatar(p.name, MaterialTheme.colorScheme.onSurfaceVariant, 36.dp, avatar = p.avatar, useMain = false)
+                                Spacer(Modifier.width(12.dp))
+                                Text(p.name, Modifier.weight(1f))
+                                TextButton(onClick = { scope.launch { runCatching { c.api.unblock(p.id) }; load() } }) { Text("Unblock") }
+                            }
+                        }
+                    }
+                } else {
+                    if (!hasContactPermission) {
+                        item(key = "discover_permission") {
+                            AppCard {
+                                Text("Discover Friends from Contacts", style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Sarvagyan securely discovers which of your phone contacts are registered on the platform without storing your contacts on our server. Phone numbers are hashed using SHA-256 directly on your device before matching.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(16.dp))
+                                PrimaryButton(
+                                    "Sync Phone Contacts",
+                                    onClick = { contactPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    } else {
+                        item(key = "discover_search_and_header") {
+                            OutlinedTextField(
+                                value = discoverQuery,
+                                onValueChange = { discoverQuery = it },
+                                label = { Text("Search name or phone number") },
+                                singleLine = true,
+                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                                trailingIcon = {
+                                    if (discoverQuery.isNotEmpty()) {
+                                        IconButton(onClick = { discoverQuery = "" }) {
+                                            Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Device Contacts (${phoneContacts.size})",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { syncPhone() }, enabled = !syncingContacts) {
+                                    Icon(Icons.Filled.Refresh, "Refresh Contacts")
+                                }
+                            }
+                            if (syncingContacts) {
+                                syncProgress?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp))
+                                }
+                                LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                            }
+                            SectionTitle("On Sarvagyan (${filteredMatched.size})")
+                        }
+
+                        if (filteredMatched.isEmpty() && !syncingContacts) {
+                            item(key = "matched_empty") {
+                                EmptyState(
+                                    Icons.Filled.People,
+                                    if (normQuery.isNotEmpty()) "No matching contacts" else "None of your contacts found",
+                                    if (normQuery.isNotEmpty()) "Try a different name or phone number." else "None of your phone contacts are on Sarvagyan yet. Send them an invite below!"
+                                )
+                            }
+                        } else {
+                            items(filteredMatched, key = { "matched_${it.id}_${it.phoneHash ?: ""}" }) { m ->
+                                val isExistingContact = contacts?.any { it.id == m.id } == true
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Avatar(m.name, LocalCallColors.current.peer, 40.dp, avatar = m.avatar, useMain = false)
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(m.name, style = MaterialTheme.typography.titleMedium)
+                                        val sub = listOfNotNull(m.username?.let { "@$it" }, c.language(m.language)?.name ?: m.language).joinToString(" · ")
+                                        Text(sub, style = MaterialTheme.typography.bodyMedium, color = Brand.HighlightAccent)
+                                    }
+                                    IconButton(onClick = { onVoicemail(m.id, m.name) }) {
+                                        Icon(Icons.Filled.Chat, "Chat with ${m.name}")
+                                    }
+                                    IconButton(onClick = { placeCall(m.id, m.name) }) {
+                                        Icon(Icons.Filled.Call, "Call ${m.name}")
+                                    }
+                                    if (!isExistingContact) {
+                                        IconButton(
+                                            onClick = { addPerson(targetUsername = m.username, targetUserId = m.id) },
+                                            enabled = !adding,
+                                        ) {
+                                            Icon(Icons.Filled.PersonAdd, "Add to contacts")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item(key = "invite_header") { SectionTitle("Invite to Sarvagyan (${filteredUnmatched.size})") }
+                        if (filteredUnmatched.isEmpty() && !syncingContacts) {
+                            item(key = "invite_empty") {
+                                Text(
+                                    if (normQuery.isNotEmpty()) "No matching contacts to invite." else "All your phone contacts are already on Sarvagyan!",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            items(filteredUnmatched, key = { "invite_${it.hash}" }) { u ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Avatar(u.name, MaterialTheme.colorScheme.surfaceVariant, 40.dp)
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(u.name, style = MaterialTheme.typography.titleMedium)
+                                        Text(u.number, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    TextButton(onClick = { shareInvite(context, u.name) }) {
+                                        Icon(Icons.Filled.Share, null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Invite")
+                                    }
                                 }
                             }
                         }
                     }
                 }
-
-                val matchedHashes = remember(matchedUsers) { matchedUsers.mapNotNull { it.phoneHash }.toSet() }
-                val unmatched = remember(phoneContacts, matchedHashes) { phoneContacts.filter { it.hash !in matchedHashes } }
-
-                SectionTitle("Invite to Sarvagyan (${unmatched.size})")
-                if (unmatched.isEmpty() && !syncingContacts) {
-                    Text("All your phone contacts are already on Sarvagyan!", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    unmatched.forEach { u ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Avatar(u.name, MaterialTheme.colorScheme.surfaceVariant, 40.dp)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(u.name, style = MaterialTheme.typography.titleMedium)
-                                Text(u.number, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            TextButton(onClick = { shareInvite(context, u.name) }) {
-                                Icon(Icons.Filled.Share, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Invite")
-                            }
-                        }
-                    }
-                }
+                item(key = "bottom_spacer") { Spacer(Modifier.height(24.dp)) }
             }
         }
-        Spacer(Modifier.height(24.dp))
     }
 }
 

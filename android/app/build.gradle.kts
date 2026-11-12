@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
 
 // Backend address. Default set to Render cloud server so physical phones connect immediately.
 // Override without editing code:  ./gradlew assembleDebug -PserverUrl=https://your-server.example
@@ -98,6 +101,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.webrtc)
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)

@@ -124,6 +124,9 @@ fun ChooseAvatarScreen(
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) uploadPhoto(uri)
     }
+    val fallbackPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) uploadPhoto(uri)
+    }
 
     Column(
         Modifier
@@ -157,7 +160,11 @@ fun ChooseAvatarScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             SecondaryButton("Upload a photo", {
-                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                runCatching {
+                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }.onFailure {
+                    fallbackPicker.launch("image/*")
+                }
             }, enabled = !busy, icon = Icons.Filled.PhotoLibrary)
             if (!user?.avatar.isNullOrBlank()) {
                 TextButton(onClick = { clearAvatar() }, enabled = !busy) {

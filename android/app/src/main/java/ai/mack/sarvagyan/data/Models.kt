@@ -83,6 +83,7 @@ data class CallRecord(
     @SerialName("call_id") val callId: String,
     val status: String,
     val outcome: String? = null,
+    @SerialName("has_voicemail") val hasVoicemail: Boolean = false,
     @SerialName("created_at") val createdAt: Double,
     @SerialName("duration_s") val durationS: Int? = null,
     val utterances: Int = 0,
@@ -201,7 +202,8 @@ data class ChatMessage(
     @SerialName("audio_url") val audioUrl: String? = null,
     @SerialName("duration_ms") val durationMs: Long = 0,
     @SerialName("created_at") val createdAt: Double = 0.0,
-    val status: String? = null, // my messages only: sent | delivered | read
+    val status: String? = null, // my messages only: sending | sent | delivered | read | failed
+    val tag: String? = null, // e.g. "voicemail"
     val deleted: Boolean = false, // deleted for everyone by the sender
 )
 
@@ -245,6 +247,9 @@ data class ContactUser(
 
 @Serializable
 data class ContactUsersResponse(val contacts: List<ContactUser>)
+
+@Serializable
+data class AddContactResponse(val contact: ContactUser)
 
 @Serializable
 data class MatchedContact(

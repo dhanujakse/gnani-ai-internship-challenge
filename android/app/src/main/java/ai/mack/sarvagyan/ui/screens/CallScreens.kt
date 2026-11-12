@@ -59,6 +59,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -291,10 +292,28 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
     var showAudio by remember { mutableStateOf(false) }
     var showLanguageSheet by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
+    var routeToast by remember { mutableStateOf<String?>(null) }
+    var lastNotifiedRoute by remember { mutableStateOf(st.route) }
     val listState = rememberLazyListState()
     val colors = LocalCallColors.current
     val myLang = c.language(st.me?.language ?: settings.myLanguage)
     val peerLang = st.peer?.let { c.language(it.language) }
+
+    LaunchedEffect(st.route) {
+        val currentRoute = st.route
+        if (currentRoute != null && currentRoute != lastNotifiedRoute) {
+            if (lastNotifiedRoute != null) {
+                routeToast = currentRoute.activeLabel
+            }
+            lastNotifiedRoute = currentRoute
+        }
+    }
+    LaunchedEffect(routeToast) {
+        if (routeToast != null) {
+            delay(2000)
+            routeToast = null
+        }
+    }
 
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
     LaunchedEffect(st.status) {
@@ -341,6 +360,11 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
 
         // conversation
         Box(Modifier.weight(1f).fillMaxWidth()) {
+            routeToast?.let { msg ->
+                Box(Modifier.align(Alignment.TopCenter).padding(top = 8.dp)) {
+                    StatusChip(msg, MaterialTheme.colorScheme.primary)
+                }
+            }
             if (st.unanswered != null) {
                 LaunchedEffect(st.unanswered) {
                     runCatching {
@@ -350,7 +374,7 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
                         delay(450)
                         tg.release()
                     }
-                    delay(2200)
+                    delay(5000)
                     c.activeCall.value = null
                     onLeaveScreen()
                 }
@@ -437,7 +461,21 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
 
     if (showAudio) AudioSheet(
         routes = st.routes, route = st.route, volume = st.originalVolume, scale = st.subtitleScale,
-        onRoute = call::setRoute, onVolume = call::setOriginalVolume, onScale = call::setSubtitleScale, onDismiss = { showAudio = false },
+        routeToast = routeToast,
+        onRoute = { r ->
+            call.setRoute(r)
+            routeToast = r.activeLabel
+            lastNotifiedRoute = r
+        },
+        onVolume = call::setOriginalVolume,
+        onScale = call::setSubtitleScale,
+        onApply = {
+            st.route?.let { r ->
+                scope.launch { c.settingsStore.update { it.copy(speakerOn = r == AudioRoute.Speaker) } }
+            }
+            showAudio = false
+        },
+        onDismiss = { showAudio = false },
     )
     if (confirmEnd) AlertDialog(
         onDismissRequest = { confirmEnd = false },
@@ -563,13 +601,32 @@ private fun share(context: Context, text: String) {
 @Composable
 private fun AudioSheet(
     routes: List<AudioRoute>, route: AudioRoute?, volume: Float, scale: Float,
-    onRoute: (AudioRoute) -> Unit, onVolume: (Float) -> Unit, onScale: (Float) -> Unit, onDismiss: () -> Unit,
+    routeToast: String?,
+    onRoute: (AudioRoute) -> Unit, onVolume: (Float) -> Unit, onScale: (Float) -> Unit,
+    onApply: () -> Unit, onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-            Text("Audio output", style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Audio output", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                val statusText = routeToast ?: route?.activeLabel
+                if (statusText != null) {
+                    Text(statusText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                routes.forEach { r -> FilterChip(selected = route == r, onClick = { onRoute(r) }, label = { Text(r.label) }) }
+                routes.forEach { r ->
+                    val active = route == r
+                    FilterChip(
+                        selected = active,
+                        onClick = { onRoute(r) },
+                        label = { Text(r.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    )
+                }
             }
             Text("Other person's original voice: ${"%.0f".format(volume * 100)}%", style = MaterialTheme.typography.titleMedium)
             Slider(value = volume, onValueChange = onVolume, valueRange = 0f..1f)
@@ -579,6 +636,8 @@ private fun AudioSheet(
                 Text("Subtitle size ${"%.0f".format(scale * 100)}%", style = MaterialTheme.typography.titleMedium)
             }
             Slider(value = scale, onValueChange = onScale, valueRange = 0.8f..1.8f)
+            Spacer(Modifier.height(12.dp))
+            PrimaryButton("OK", onApply, Modifier.fillMaxWidth())
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -679,7 +738,7 @@ private fun UnansweredCard(title: String, detail: String, name: String, onVoicem
         }
         Spacer(Modifier.height(24.dp))
         if (onVoicemail != null) {
-            PrimaryButton("Send voice message", onVoicemail, Modifier.fillMaxWidth(), icon = Icons.Filled.Voicemail)
+            PrimaryButton("Leave a voice message", onVoicemail, Modifier.fillMaxWidth(), icon = Icons.Filled.Voicemail)
             Spacer(Modifier.height(8.dp))
         }
         SecondaryButton("Close", onClose, Modifier.fillMaxWidth())

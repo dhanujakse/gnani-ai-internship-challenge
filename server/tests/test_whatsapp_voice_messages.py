@@ -27,16 +27,22 @@ def test_whatsapp_style_in_chat_voice_messages_two_accounts(env) -> None:
     assert alice_msgs[0]["status"] == "sent"
 
     # Bob opens thread -> receives transcript + English translation, and read ticks update to "read"
+    import time as _time
     with env.client.websocket_connect("/v1/chat/ws", headers=env.auth(ta)) as ws_a:
         bob_msgs = env.client.get(f"/v1/chat/conversations/{cid}/messages", headers=env.auth(tb)).json()["messages"]
         assert len(bob_msgs) == 1
+        read_ev = ws_a.receive_json()
+        assert read_ev == {"type": "chat_read", "conversation_id": cid, "user_id": b["id"]}
+        for _ in range(40):
+            if bob_msgs[0]["original_text"] != "[Voice Message]":
+                break
+            _time.sleep(0.05)
+            bob_msgs = env.client.get(f"/v1/chat/conversations/{cid}/messages", headers=env.auth(tb)).json()["messages"]
         bm = bob_msgs[0]
         assert bm["original_text"] == "நாளை சந்திக்கலாம்"
         assert bm["translated_text"] == "[en-IN] நாளை சந்திக்கலாம்"
         assert bm["is_translated"] is True
         assert bm["audio_url"] == f"/v1/chat/audio/{audio_id}"
-        read_ev = ws_a.receive_json()
-        assert read_ev == {"type": "chat_read", "conversation_id": cid, "user_id": b["id"]}
 
     # Alice now sees "read" ticks
     alice_msgs_after = env.client.get(f"/v1/chat/conversations/{cid}/messages", headers=env.auth(ta)).json()["messages"]

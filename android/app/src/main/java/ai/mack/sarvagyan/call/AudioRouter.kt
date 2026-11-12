@@ -13,7 +13,20 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 
-enum class AudioRoute(val label: String) { Speaker("Speaker"), Earpiece("Phone"), Headset("Headset"), Bluetooth("Bluetooth") }
+enum class AudioRoute(val label: String) {
+    Speaker("Speaker"),
+    Earpiece("Phone"),
+    Headset("Wired headset"),
+    Bluetooth("Bluetooth");
+
+    val activeLabel: String
+        get() = when (this) {
+            Speaker -> "Speaker on"
+            Earpiece -> "Phone earpiece on"
+            Headset -> "Wired headset on"
+            Bluetooth -> "Bluetooth on"
+        }
+}
 
 /**
  * Puts the device in communication mode, manages audio focus, and routes audio between
@@ -26,6 +39,7 @@ class AudioRouter(private val context: Context, private val onRoutesChanged: ((A
     private var focusRequest: AudioFocusRequest? = null
     private var desiredRoute: AudioRoute? = null
     private var isScoStarted = false
+    private var lastAvailable: List<AudioRoute> = emptyList()
 
     private val deviceCallback = if (Build.VERSION.SDK_INT >= 23) {
         object : AudioDeviceCallback() {
@@ -41,8 +55,10 @@ class AudioRouter(private val context: Context, private val onRoutesChanged: ((A
 
     private val wiredHeadsetReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_HEADSET_PLUG) {
-                handleDevicesChanged()
+            when (intent?.action) {
+                Intent.ACTION_HEADSET_PLUG,
+                AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED,
+                "android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" -> handleDevicesChanged()
             }
         }
     }
@@ -50,13 +66,21 @@ class AudioRouter(private val context: Context, private val onRoutesChanged: ((A
     private fun handleDevicesChanged() {
         mainHandler.post {
             val avail = available()
-            // If the desired route is no longer available, fall back to Speaker or Earpiece
+            val addedExternal = avail.firstOrNull {
+                (it == AudioRoute.Bluetooth || it == AudioRoute.Headset) && !lastAvailable.contains(it)
+            }
+            lastAvailable = avail
             val current = desiredRoute
-            if (current != null && !avail.contains(current)) {
-                val fallback = if (avail.contains(AudioRoute.Earpiece)) AudioRoute.Earpiece else AudioRoute.Speaker
+            if (addedExternal != null) {
+                select(addedExternal)
+            } else if (current != null && !avail.contains(current)) {
+                val fallback = when {
+                    avail.contains(AudioRoute.Headset) -> AudioRoute.Headset
+                    avail.contains(AudioRoute.Earpiece) -> AudioRoute.Earpiece
+                    else -> AudioRoute.Speaker
+                }
                 select(fallback)
             } else if (current != null) {
-                // Reapply in case Android shifted the default
                 reapply()
             }
             onRoutesChanged?.invoke(this@AudioRouter)
@@ -67,12 +91,16 @@ class AudioRouter(private val context: Context, private val onRoutesChanged: ((A
         previousMode = am.mode
         requestAudioFocus()
         am.mode = AudioManager.MODE_IN_COMMUNICATION
+        lastAvailable = available()
 
         if (Build.VERSION.SDK_INT >= 23 && deviceCallback != null) {
             am.registerAudioDeviceCallback(deviceCallback, mainHandler)
         }
         try {
-            val filter = IntentFilter(Intent.ACTION_HEADSET_PLUG)
+            val filter = IntentFilter(Intent.ACTION_HEADSET_PLUG).apply {
+                addAction(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED)
+                addAction("android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED")
+            }
             context.registerReceiver(wiredHeadsetReceiver, filter)
         } catch (_: Exception) {}
     }

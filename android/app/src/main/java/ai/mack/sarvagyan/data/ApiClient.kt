@@ -73,14 +73,22 @@ class ApiClient(
     }
 
     private suspend fun <T> send(
-        method: String, url: String, body: RequestBody?, serializer: KSerializer<T>, retried: Boolean = false,
+        method: String,
+        url: String,
+        body: RequestBody?,
+        serializer: KSerializer<T>,
+        retried: Boolean = false,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): T = withContext(Dispatchers.IO) {
             val used = token()
-            val response = open(authorised(url).method(method, body).build())
+            val req = authorised(url).apply {
+                extraHeaders.forEach { (k, v) -> header(k, v) }
+            }.method(method, body).build()
+            val response = open(req)
             // access tokens last 15 minutes: on 401, get a new one with the refresh token and try once more
             if (response.code == 401 && !retried && used != null && "/v1/auth/" !in url) {
                 response.close()
-                if (refresh(used)) return@withContext send(method, url, body, serializer, retried = true)
+                if (refresh(used)) return@withContext send(method, url, body, serializer, retried = true, extraHeaders = extraHeaders)
                 throw ApiException(401, "Please sign in again.")
             }
             response.use { r ->
@@ -286,17 +294,41 @@ class ApiClient(
     suspend fun sendChatMessage(conversationId: String, text: String, language: String? = null): SendMessageResponse =
         request("POST", "/v1/chat/conversations/$conversationId/messages", obj("text" to text, "language" to language), SendMessageResponse.serializer())
 
-    suspend fun sendChatVoice(conversationId: String, language: String, pcm: ByteArray): SendMessageResponse {
-        val url = (baseUrl().trimEnd('/') + "/v1/chat/conversations/$conversationId/voice").toHttpUrl().newBuilder()
+    suspend fun sendChatVoice(conversationId: String, language: String, pcm: ByteArray, tag: String? = null): SendMessageResponse {
+        val b = (baseUrl().trimEnd('/') + "/v1/chat/conversations/$conversationId/voice").toHttpUrl().newBuilder()
             .addQueryParameter("language", language)
-            .build().toString()
-        return send("POST", url, pcm.toRequestBody("application/octet-stream".toMediaType()), SendMessageResponse.serializer())
+        if (!tag.isNullOrBlank()) b.addQueryParameter("tag", tag)
+        val compressed = java.io.ByteArrayOutputStream().use { baos ->
+            java.util.zip.GZIPOutputStream(baos).use { gz -> gz.write(pcm) }
+            baos.toByteArray()
+        }
+        return send(
+            "POST",
+            b.build().toString(),
+            compressed.toRequestBody("application/octet-stream".toMediaType()),
+            SendMessageResponse.serializer(),
+            extraHeaders = mapOf("Content-Encoding" to "gzip"),
+        )
+    }
+
+    suspend fun registerPushToken(token: String) {
+        request("PUT", "/v1/me/push-token", obj("token" to token, "platform" to "android"), JsonObject.serializer())
+    }
+
+    suspend fun unregisterPushToken(token: String? = null) {
+        val path = if (token.isNullOrBlank()) "/v1/me/push-token"
+        else "/v1/me/push-token?token=${java.net.URLEncoder.encode(token, "UTF-8")}"
+        request("DELETE", path, null, JsonObject.serializer())
     }
 
     // contacts, blocking, direct (ringing) calls
     suspend fun contacts(): ContactUsersResponse = request("GET", "/v1/contacts", null, ContactUsersResponse.serializer())
-    suspend fun addContact(username: String) {
-        request("POST", "/v1/contacts", obj("username" to username), JsonObject.serializer())
+    suspend fun addContact(username: String? = null, userId: String? = null): ContactUser {
+        val pairs = listOfNotNull(
+            username?.takeIf { it.isNotBlank() }?.let { "username" to it },
+            userId?.takeIf { it.isNotBlank() }?.let { "user_id" to it },
+        )
+        return request("POST", "/v1/contacts", obj(*pairs.toTypedArray()), AddContactResponse.serializer()).contact
     }
     suspend fun removeContact(id: String) {
         request("DELETE", "/v1/contacts/$id", null, JsonObject.serializer())

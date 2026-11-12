@@ -20,6 +20,7 @@ WebSocket:  /v1/calls/{call_id}/ws   (Authorization: Bearer <token>)
 
 import asyncio
 import contextlib
+import gzip
 import hmac
 import inspect
 import json
@@ -64,7 +65,7 @@ class Services:
     """Everything stateful, created once per app (tests inject fakes)."""
 
     def __init__(self, settings: Settings, db: Database | None = None, recognizer=None, translator=None,
-                 synthesizer_factory=None, voicemail_pace_s: float = vm.FRAME_S) -> None:  # fmt: skip
+                 synthesizer_factory=None, voicemail_pace_s: float = vm.FRAME_S, push_sender=None) -> None:  # fmt: skip
         self.settings = settings
         self.db = db or Database(settings.data_path / "sarvagyan.sqlite3")
         key = settings.gnani_api_key.get_secret_value()
@@ -72,10 +73,12 @@ class Services:
         self.translator = translator or MyMemoryTranslator(settings.mymemory_email)
         self.synthesizer_factory = synthesizer_factory or (
             lambda: GnaniSynthesizer(key, settings.gnani_tts_url, settings.tts_model))
+        self.voicemail_pace_s = voicemail_pace_s
         self.voicemail = vm.VoicemailService(self.db, self.recognizer, self.translator, self.synthesizer_factory,
                                              pace_s=voicemail_pace_s)  # fmt: skip
         self.limits = RateLimiter()
         self._ring_tasks: set[asyncio.Task] = set()
+        self._bg_tasks: set[asyncio.Task] = set()
         self.rooms: dict[str, CallRoom] = {}
         self.calls: dict[str, dict] = {}  # call_id -> {code, host, participants{uid: language}, created}
         self.by_code: dict[str, str] = {}
@@ -87,7 +90,9 @@ class Services:
         self.avatar_dir = self.settings.data_path / "avatars"
         self.avatar_dir.mkdir(parents=True, exist_ok=True)
         self.chat_sockets: dict[str, set[WebSocket]] = defaultdict(set)
+        self.active_chats: dict[WebSocket, str] = {}
         self._call_acks: dict[str, dict] = {}
+        self.push_sender = push_sender or self._default_push_sender
 
     def delete_custom_avatar(self, avatar: str | None) -> None:
         if avatar and avatar.startswith("custom:"):
@@ -97,52 +102,110 @@ class Services:
                     with contextlib.suppress(OSError):
                         (self.avatar_dir / f"{fid}{suffix}.webp").unlink(missing_ok=True)
 
-    async def broadcast_chat_message(self, cid: str, msg: dict) -> None:
+    async def _default_push_sender(self, tokens: list[str], title: str, body: str, data: dict[str, str]) -> None:
+        sa_raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+        if not sa_raw or not tokens:
+            return
+        try:
+            import google.auth.transport.requests
+            from google.oauth2 import service_account
+            sa_info = json.loads(sa_raw) if sa_raw.startswith("{") else json.loads(Path(sa_raw).read_text())
+            creds = service_account.Credentials.from_service_account_info(
+                sa_info, scopes=["https://www.googleapis.com/auth/firebase.messaging"]
+            )
+            creds.refresh(google.auth.transport.requests.Request())
+            project_id = sa_info["project_id"]
+            url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
+            headers = {"Authorization": f"Bearer {creds.token}"}
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                await asyncio.gather(*(
+                    client.post(url, headers=headers, json={
+                        "message": {
+                            "token": tok,
+                            "notification": {"title": title, "body": body},
+                            "data": data,
+                            "android": {"priority": "HIGH", "notification": {"channel_id": "chat_messages"}},
+                        }
+                    }) for tok in tokens
+                ), return_exceptions=True)
+        except Exception as exc:
+            log.warning("fcm push error: %s", exc)
+
+    def _spawn_bg(self, coro) -> asyncio.Task:
+        t = asyncio.create_task(coro)
+        self._bg_tasks.add(t)
+        t.add_done_callback(self._bg_tasks.discard)
+        return t
+
+    async def _translate_for_targets(self, msg: dict, target_langs: set[str]) -> dict[str, tuple[str, bool]]:
+        orig_text = msg.get("original_text") or ""
+        source_lang = msg.get("source_lang") or "en-IN"
+        source_base = source_lang.split("-")[0].lower()
+        results: dict[str, tuple[str, bool]] = {}
+        to_fetch: list[str] = []
+        for lang in target_langs:
+            if not orig_text or lang.split("-")[0].lower() == source_base or orig_text == "[Voice Message]":
+                results[lang] = (orig_text, False)
+            else:
+                cached = self.db.get_cached_translation(msg["id"], lang)
+                if cached:
+                    results[lang] = (cached, cached != orig_text)
+                else:
+                    to_fetch.append(lang)
+        if to_fetch:
+            async def fetch_one(lang: str) -> tuple[str, str]:
+                try:
+                    tr = await self.translator.translate(orig_text, source_lang, lang)
+                    self.db.store_cached_translation(msg["id"], lang, tr)
+                    return lang, tr
+                except Exception as exc:
+                    log.warning("broadcast translation failed: %s", exc)
+                    return lang, orig_text
+            for lang, tr in await asyncio.gather(*(fetch_one(l) for l in to_fetch)):
+                results[lang] = (tr, tr != orig_text)
+        return results
+
+    async def broadcast_chat_message(self, cid: str, msg: dict, event_type: str = "message") -> None:
         members = self.db.get_conversation_members(cid)
+        connected_langs = {
+            (m.get("language") or "en-IN")
+            for m in members
+            if self.chat_sockets.get(m.get("id") or m.get("user_id"))
+        }
+        all_langs = {(m.get("language") or "en-IN") for m in members}
+        translations = await self._translate_for_targets(msg, connected_langs if event_type != "message" else all_langs)
+
+        source_lang = msg.get("source_lang") or "en-IN"
+        orig_text = msg.get("original_text") or ""
+        audio_id = msg.get("audio_id")
+        delivered_to: list[str] = []
+
         for m in members:
             uid = m.get("id") or m.get("user_id")
             socks = self.chat_sockets.get(uid)
             if not socks:
                 continue
             target_lang = m.get("language") or "en-IN"
-            source_lang = msg.get("source_lang") or "en-IN"
-            orig_text = msg.get("original_text") or ""
-            translated_text = orig_text
-            is_translated = False
-
-            target_base = target_lang.split("-")[0].lower()
-            source_base = source_lang.split("-")[0].lower()
-
-            if orig_text and target_base != source_base:
-                cached = self.db.get_cached_translation(msg["id"], target_lang)
-                if cached:
-                    translated_text = cached
-                    is_translated = (translated_text != orig_text)
-                else:
-                    try:
-                        translated_text = await self.translator.translate(orig_text, source_lang, target_lang)
-                        self.db.store_cached_translation(msg["id"], target_lang, translated_text)
-                        is_translated = (translated_text != orig_text)
-                    except Exception as exc:
-                        log.warning("broadcast translation failed: %s", exc)
-                        translated_text = orig_text
-
+            translated_text, is_translated = translations.get(target_lang, (orig_text, False))
             payload = {
-                "type": "message",
+                "type": event_type,
                 "conversation_id": cid,
                 "message": {
                     "id": msg["id"],
                     "conversation_id": cid,
                     "sender_id": msg["sender_id"],
                     "sender_name": msg["sender_name"],
+                    "sender_avatar": msg.get("sender_avatar"),
                     "source_lang": source_lang,
                     "original_text": orig_text,
                     "translated_text": translated_text,
                     "is_translated": is_translated,
-                    "audio_id": msg.get("audio_id"),
-                    "duration_ms": msg.get("duration_ms"),
+                    "audio_id": audio_id,
+                    "audio_url": f"/v1/chat/audio/{audio_id}" if audio_id else None,
+                    "duration_ms": msg.get("duration_ms") or 0,
+                    "tag": msg.get("tag"),
                     "created_at": msg["created_at"],
-                }
+                },
             }
             raw = json.dumps(payload, ensure_ascii=False)
             dead = set()
@@ -153,7 +216,67 @@ class Services:
                     dead.add(ws)
             socks.difference_update(dead)
             if socks and uid != msg["sender_id"]:
-                self.db.mark_delivered(cid, uid)  # it reached one of their phones
+                self.db.mark_delivered(cid, uid)
+                delivered_to.append(uid)
+
+        for uid in delivered_to:
+            await self.notify_user(msg["sender_id"], {"type": "chat_delivered", "conversation_id": cid, "user_id": uid})
+
+        if event_type == "message":
+            await self._send_push_for_message(cid, msg, members, translations)
+
+    async def _send_push_for_message(self, cid: str, msg: dict, members: list[dict],
+                                       translations: dict[str, tuple[str, bool]]) -> None:
+        recipient_ids = [
+            (m.get("id") or m.get("user_id")) for m in members
+            if (m.get("id") or m.get("user_id")) != msg["sender_id"]
+        ]
+        # Skip users who currently have this exact chat open on an active socket
+        open_users = {
+            uid for uid in recipient_ids
+            if any(self.active_chats.get(ws) == cid for ws in self.chat_sockets.get(uid, ()))
+        }
+        notify_ids = [uid for uid in recipient_ids if uid not in open_users]
+        if not notify_ids:
+            return
+        tokens_by_user = self.db.get_device_tokens(notify_ids)
+        if not tokens_by_user:
+            return
+        conv = self.db.get_conversation(cid, msg["sender_id"])
+        is_group = bool(conv and conv.get("is_group"))
+        title = f"{msg['sender_name']} · {conv['name']}" if is_group and conv and conv.get("name") else msg["sender_name"]
+        tag = msg.get("tag")
+        audio_id = msg.get("audio_id")
+        lang_by_uid = {(m.get("id") or m.get("user_id")): (m.get("language") or "en-IN") for m in members}
+        data = {"type": "chat_message", "conversation_id": cid, "message_id": msg["id"]}
+
+        async def send_one(uid: str, toks: list[str]) -> None:
+            if tag == "voicemail":
+                body = "Voicemail"
+            elif audio_id:
+                body = "Voice message"
+            else:
+                preview = translations.get(lang_by_uid.get(uid, "en-IN"), (msg.get("original_text") or "", False))[0]
+                body = preview if len(preview) <= 120 else preview[:117] + "…"
+            await self.push_sender(toks, title, body, data)
+
+        await asyncio.gather(*(send_one(uid, toks) for uid, toks in tokens_by_user.items() if toks), return_exceptions=True)
+
+    async def process_voice_transcript(self, cid: str, mid: str, pcm: bytes, language: str) -> None:
+        transcribed_text = ""
+        detected_lang = language
+        try:
+            settle = 0.05 if self.voicemail_pace_s == 0 else vm.SETTLE_S
+            transcribed_text, detected = await vm.transcribe(self.recognizer, pcm, language, pace_s=self.voicemail_pace_s, settle_s=settle)
+            if detected:
+                detected_lang = detected
+        except Exception as exc:
+            log.warning("background chat voice transcription error: %s", exc)
+        if not transcribed_text:
+            return
+        updated = self.db.update_message_transcript(mid, transcribed_text, detected_lang)
+        if updated:
+            await self.broadcast_chat_message(cid, updated, event_type="message_updated")
 
     async def notify_members(self, cid: str, event: dict, except_user: str | None = None) -> None:
         for m in self.db.get_conversation_members(cid):
@@ -458,6 +581,22 @@ def create_app(services: Services | None = None) -> FastAPI:
     @app.post("/v1/auth/logout")
     def logout(user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
         s.db.revoke_session(user["session_id"])
+        s.db.delete_device_token(user["id"])
+        return {"ok": True}
+
+    class PushTokenIn(BaseModel):
+        token: str = Field(min_length=10, max_length=512)
+        platform: str = Field(default="android", pattern="^(android|ios)$")
+
+    @app.put("/v1/me/push-token")
+    def register_push_token(body: PushTokenIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+        s.db.upsert_device_token(user["id"], body.token.strip(), body.platform)
+        return {"ok": True}
+
+    @app.delete("/v1/me/push-token")
+    def unregister_push_token(token: str | None = Query(default=None), user: dict = Depends(current_user),
+                              s: Services = Depends(svc)) -> dict:  # fmt: skip
+        s.db.delete_device_token(user["id"], token.strip() if token else None)
         return {"ok": True}
 
     class DeleteAccountIn(BaseModel):
@@ -549,7 +688,7 @@ def create_app(services: Services | None = None) -> FastAPI:
             if av == "":
                 clean_avatar = ""
                 s.delete_custom_avatar(user.get("avatar"))
-            elif re.fullmatch(r"avatar-\d{2}", av):
+            elif re.fullmatch(r"avatar-\d{2,4}", av):
                 clean_avatar = av
                 s.delete_custom_avatar(user.get("avatar"))
             else:
@@ -801,8 +940,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     def may_call(caller: dict, callee: dict, s: Services) -> bool:
         if s.db.either_blocked(caller["id"], callee["id"]):
             return False
-        return (callee.get("allow_calls") == "everyone" or s.db.is_contact(callee["id"], caller["id"])
-                or s.db.have_called(callee["id"], caller["id"]))  # fmt: skip
+        return callee.get("allow_calls") == "everyone" or s.db.is_contact(callee["id"], caller["id"])
 
     # --- direct calls: ring a person, answer, decline, missed ---------------------------------
     class DirectCallIn(BaseModel):
@@ -908,6 +1046,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         for row in s.db.history(user["id"]):
             dur = int(row["ended_at"] - row["started_at"]) if row["ended_at"] and row["started_at"] else None
             items.append({"call_id": row["id"], "status": row["status"], "outcome": row.get("outcome"),
+                          "has_voicemail": bool(row.get("has_voicemail")),
                           "created_at": row["created_at"], "duration_s": dur, "utterances": row["utterances"],
                           "my_language": row["my_language"],
                           "peer": ({"id": row["peer_id"], "name": row["peer_name"], "language": row["peer_language"],
@@ -1135,7 +1274,7 @@ def create_app(services: Services | None = None) -> FastAPI:
             trans = orig
             is_trans = False
 
-            if orig and target_base != src_base:
+            if orig and orig != "[Voice Message]" and target_base != src_base:
                 cached = s.db.get_cached_translation(msg["id"], target_lang)
                 if cached:
                     trans = cached
@@ -1175,9 +1314,13 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.post("/v1/chat/conversations/{cid}/voice")
     async def send_voice_message(cid: str, req: Request, language: str = Query("ta-IN"),
+                                 tag: str | None = Query(default=None, pattern="^(voicemail)$"),
                                  user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
         if not s.db.is_conversation_member(cid, user["id"]):
             raise HTTPException(403, "You are not a member of this conversation.")
+        is_gzip = (req.headers.get("content-encoding") or "").lower() == "gzip" or (
+            req.headers.get("x-audio-encoding") or ""
+        ).lower() == "gzip"
         chunks: list[bytes] = []
         size = 0
         async for chunk in req.stream():
@@ -1185,7 +1328,16 @@ def create_app(services: Services | None = None) -> FastAPI:
             if size > vm.MAX_BYTES:
                 raise HTTPException(413, "Voice message exceeds the 60-second limit.")
             chunks.append(chunk)
-        pcm = b"".join(chunks)
+        raw_bytes = b"".join(chunks)
+        if is_gzip:
+            try:
+                pcm = gzip.decompress(raw_bytes)
+            except Exception:
+                raise HTTPException(400, "Invalid compressed audio payload.") from None
+            if len(pcm) > vm.MAX_BYTES:
+                raise HTTPException(413, "Voice message exceeds the 60-second limit.")
+        else:
+            pcm = raw_bytes
         pcm = pcm[: len(pcm) - len(pcm) % 2]
         if len(pcm) < vm.MIN_BYTES:
             raise HTTPException(422, "Voice message is too short.")
@@ -1195,21 +1347,11 @@ def create_app(services: Services | None = None) -> FastAPI:
         audio_file.write_bytes(pcm)
         duration_ms = int(len(pcm) / (vm.SAMPLE_RATE * 2) * 1000)
 
-        transcribed_text = ""
-        detected_lang = language
-        try:
-            transcribed_text, detected = await vm.transcribe(s.recognizer, pcm, language)
-            if detected:
-                detected_lang = detected
-        except Exception as exc:
-            log.warning("chat voice transcription error: %s", exc)
-
-        if not transcribed_text:
-            transcribed_text = "[Voice Message]"
-
-        msg = s.db.insert_message(cid, user["id"], user["display_name"], detected_lang, transcribed_text,
-                                  audio_id=audio_id, duration_ms=duration_ms)
+        msg = s.db.insert_message(cid, user["id"], user["display_name"], language, "[Voice Message]",
+                                  audio_id=audio_id, duration_ms=duration_ms, tag=tag)
+        msg["audio_url"] = f"/v1/chat/audio/{audio_id}"
         await s.broadcast_chat_message(cid, msg)
+        s._spawn_bg(s.process_voice_transcript(cid, msg["id"], pcm, language))
         return {"message": msg}
 
     @app.delete("/v1/chat/messages/{mid}")
@@ -1337,6 +1479,12 @@ def create_app(services: Services | None = None) -> FastAPI:
                     cid = event.get("conversation_id")
                     if cid and s.db.is_conversation_member(cid, user["id"]):
                         await s.broadcast_chat_typing(cid, user["id"], user["display_name"])
+                elif kind == "chat_focus":
+                    cid = event.get("conversation_id")
+                    if cid and s.db.is_conversation_member(cid, user["id"]):
+                        s.active_chats[ws] = cid
+                    else:
+                        s.active_chats.pop(ws, None)
                 elif kind == "call_ack":
                     cid = str(event.get("call_id") or "")
                     state = str(event.get("state") or "")
@@ -1349,6 +1497,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         except (WebSocketDisconnect, asyncio.TimeoutError, RuntimeError):
             pass
         finally:
+            s.active_chats.pop(ws, None)
             s.chat_sockets[user["id"]].discard(ws)
             with contextlib.suppress(Exception):
                 await ws.close()

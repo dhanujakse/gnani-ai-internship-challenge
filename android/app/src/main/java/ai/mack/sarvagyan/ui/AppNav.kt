@@ -50,15 +50,21 @@ object Routes {
     @Serializable data object Help
     @Serializable data object Contacts
     @Serializable data class Voicemail(val tab: Int = 0)
-    @Serializable data class ChatConversation(val conversationId: String)
+    @Serializable data class ChatConversation(val conversationId: String, val voicemail: Boolean = false)
 }
 
 @Composable
-fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed: () -> Unit) {
+fun AppNav(
+    nav: NavHostController,
+    pendingJoinCode: String?,
+    onJoinCodeConsumed: () -> Unit,
+    pendingConversationId: String? = null,
+    onConversationConsumed: () -> Unit = {},
+) {
     val container = LocalContext.current.container
     val incoming by container.incomingCall.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
-        Screens(nav, pendingJoinCode, onJoinCodeConsumed)
+        Screens(nav, pendingJoinCode, onJoinCodeConsumed, pendingConversationId, onConversationConsumed)
         // someone is calling: the ringing screen covers whatever is open
         incoming?.let { call ->
             IncomingCallScreen(call, onAnswered = {
@@ -70,15 +76,21 @@ fun AppNav(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed:
 }
 
 @Composable
-private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCodeConsumed: () -> Unit) {
+private fun Screens(
+    nav: NavHostController,
+    pendingJoinCode: String?,
+    onJoinCodeConsumed: () -> Unit,
+    pendingConversationId: String?,
+    onConversationConsumed: () -> Unit,
+) {
     val context = LocalContext.current
     val c = context.container
     val scope = rememberCoroutineScope()
-    fun openChatWithUser(userId: String) {
+    fun openChatWithUser(userId: String, voicemail: Boolean = false) {
         scope.launch {
             try {
                 val res = c.api.directChat(userId = userId)
-                nav.navigate(Routes.ChatConversation(res.conversation.id))
+                nav.navigate(Routes.ChatConversation(res.conversation.id, voicemail = voicemail))
             } catch (e: Exception) {
                 Toast.makeText(context, e.message ?: "Could not open chat.", Toast.LENGTH_SHORT).show()
             }
@@ -113,10 +125,13 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
             )
         }
         composable<Routes.Home> {
-            LaunchedEffect(pendingJoinCode) {
+            LaunchedEffect(pendingJoinCode, pendingConversationId) {
                 if (pendingJoinCode != null) {
                     nav.navigate(Routes.CallSetup(join = true, code = pendingJoinCode))
                     onJoinCodeConsumed()
+                } else if (pendingConversationId != null) {
+                    nav.navigate(Routes.ChatConversation(pendingConversationId))
+                    onConversationConsumed()
                 }
             }
             HomeScreen(
@@ -146,7 +161,7 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
             ActiveCallScreen(
                 onFinished = { callId -> nav.navigate(Routes.Summary(callId)) { popUpTo(Routes.Home) } },
                 onLeaveScreen = { nav.popBackStack(Routes.Home, inclusive = false) },
-                onVoicemail = { id, _ -> nav.popBackStack(Routes.Home, inclusive = false); openChatWithUser(id) },
+                onVoicemail = { id, _ -> nav.popBackStack(Routes.Home, inclusive = false); openChatWithUser(id, voicemail = true) },
             )
         }
         composable<Routes.Contacts> {
@@ -178,6 +193,7 @@ private fun Screens(nav: NavHostController, pendingJoinCode: String?, onJoinCode
             val args = entry.toRoute<Routes.ChatConversation>()
             ChatConversationScreen(
                 conversationId = args.conversationId,
+                isVoicemail = args.voicemail,
                 onBack = { nav.popBackStack() },
             )
         }

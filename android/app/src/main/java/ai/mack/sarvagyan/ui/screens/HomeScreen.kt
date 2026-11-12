@@ -372,12 +372,17 @@ private fun ContactRow(
 @Composable
 private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (Peer) -> Unit) {
     val peer = h.peer
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    val isMissed = h.status == "missed" || h.outcome in listOf("missed", "no_answer", "cancelled")
+    val rowMod = if (isMissed && h.hasVoicemail && peer != null) {
+        Modifier.fillMaxWidth().clickable { onVoicemail(peer) }.padding(vertical = 6.dp)
+    } else {
+        Modifier.fillMaxWidth().padding(vertical = 6.dp)
+    }
+    Row(rowMod, verticalAlignment = Alignment.CenterVertically) {
         Avatar(peer?.name ?: "Nobody", LocalCallColors.current.peer, 40.dp, avatar = peer?.avatar, useMain = false)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(peer?.name ?: "Nobody joined", style = MaterialTheme.typography.titleMedium)
-            val isMissed = h.status == "missed" || h.outcome in listOf("missed", "no_answer", "cancelled")
             val outcomeLabel = when {
                 isMissed -> "Missed call"
                 h.outcome == "declined" -> "Declined"
@@ -386,6 +391,7 @@ private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (P
             }
             val meta = buildList {
                 if (outcomeLabel != null) add(outcomeLabel)
+                if (isMissed && h.hasVoicemail) add("Voicemail")
                 add(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date((h.createdAt * 1000).toLong())))
                 h.durationS?.let { add(formatDuration(it.toLong())) }
                 if (h.utterances > 0) add("${h.utterances} translated")
@@ -398,7 +404,11 @@ private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (P
             )
         }
         if (peer != null) IconButton(onClick = { onVoicemail(peer) }) {
-            Icon(Icons.Filled.Voicemail, contentDescription = "Leave ${peer.name ?: "them"} a voicemail")
+            Icon(
+                Icons.Filled.Voicemail,
+                contentDescription = if (h.hasVoicemail) "Open ${peer.name ?: "their"} voicemail in chat" else "Leave ${peer.name ?: "them"} a voicemail",
+                tint = if (h.hasVoicemail) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (peer != null) IconButton(onClick = { onStar(!peer.favourite) }) {
             Icon(if (peer.favourite) Icons.Filled.Star else Icons.Filled.StarBorder, contentDescription = if (peer.favourite) "Remove favourite" else "Add favourite")

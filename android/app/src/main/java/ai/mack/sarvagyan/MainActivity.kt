@@ -31,6 +31,7 @@ import android.graphics.Color as AndroidColor
 
 class MainActivity : FragmentActivity() { // FragmentActivity: needed by the fingerprint / PIN prompt
     private val pendingJoin = mutableStateOf<String?>(null)
+    private val pendingConversation = mutableStateOf<String?>(null)
     private val locked = mutableStateOf(false)
     private var leftAt = 0L
 
@@ -63,7 +64,13 @@ class MainActivity : FragmentActivity() { // FragmentActivity: needed by the fin
                 // Surface provides the theme's content colour, so every Text defaults to readable colours
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Box(Modifier.fillMaxSize()) {
-                        AppNav(rememberNavController(), pendingJoin.value, onJoinCodeConsumed = { pendingJoin.value = null })
+                        AppNav(
+                            rememberNavController(),
+                            pendingJoin.value,
+                            onJoinCodeConsumed = { pendingJoin.value = null },
+                            pendingConversationId = pendingConversation.value,
+                            onConversationConsumed = { pendingConversation.value = null },
+                        )
                         if (locked.value) LockScreen(onUnlock = { unlock() })
                     }
                 }
@@ -91,8 +98,11 @@ class MainActivity : FragmentActivity() { // FragmentActivity: needed by the fin
         handleIntent(intent)
     }
 
-    /** sarvagyan://join/ABC234  or  https://sarvagyan.app/join/ABC234 */
+    /** sarvagyan://join/ABC234  or  https://sarvagyan.app/join/ABC234  or push notification extra conversation_id */
     private fun handleIntent(intent: Intent?) {
+        intent?.getStringExtra("conversation_id")?.takeIf { it.isNotBlank() }?.let {
+            pendingConversation.value = it
+        }
         val data = intent?.data ?: return
         val segments = data.pathSegments.orEmpty()
         val code = when {

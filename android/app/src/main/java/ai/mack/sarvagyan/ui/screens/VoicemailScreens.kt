@@ -14,11 +14,14 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import ai.mack.sarvagyan.data.objOrNull
 import ai.mack.sarvagyan.data.str
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -577,6 +580,7 @@ private fun AddMemberDialog(
 @Composable
 fun ChatConversationScreen(
     conversationId: String,
+    isVoicemail: Boolean = false,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -624,10 +628,14 @@ fun ChatConversationScreen(
 
     val listState = rememberLazyListState()
 
+    val failedVoicePcms = remember { mutableStateMapOf<String, ByteArray>() }
+
     suspend fun loadMessages() {
         try {
             val res = c.api.chatMessages(conversationId)
-            messages = res.messages
+            val failedLocal = messages.filter { it.id.startsWith("local-") && it.status == "failed" }
+            val sendingLocal = messages.filter { it.id.startsWith("local-") && it.status == "sending" }
+            messages = res.messages + sendingLocal + failedLocal
             error = null
         } catch (e: ApiException) {
             error = e.message
@@ -635,18 +643,68 @@ fun ChatConversationScreen(
     }
 
     LaunchedEffect(conversationId) {
+        c.appSocket.sendChatFocus(conversationId)
         runCatching {
             conversation = c.api.conversation(conversationId).conversation
         }
         while (true) {
             loadMessages()
-            delay(2_500)
+            delay(15_000)
         }
     }
     LaunchedEffect(conversationId) {
         c.appSocket.events.collect { ev ->
-            if (ev.str("conversation_id") == conversationId &&
-                ev.str("type") in setOf("message", "chat_read", "message_deleted")) loadMessages()
+            if (ev.str("conversation_id") != conversationId) return@collect
+            when (ev.str("type")) {
+                "message" -> {
+                    val mObj = ev.objOrNull("message")
+                    val incoming = mObj?.let { runCatching { c.json.decodeFromJsonElement(ChatMessage.serializer(), it) }.getOrNull() }
+                    if (incoming != null) {
+                        if (incoming.senderId == me?.id) {
+                            if (messages.none { it.id == incoming.id }) {
+                                messages = (messages + incoming.copy(status = incoming.status ?: "sent")).sortedBy { it.createdAt }
+                            }
+                        } else {
+                            if (messages.none { it.id == incoming.id }) {
+                                messages = (messages + incoming).sortedBy { it.createdAt }
+                            }
+                            scope.launch { loadMessages() }
+                        }
+                    } else {
+                        loadMessages()
+                    }
+                }
+                "message_updated" -> {
+                    val mObj = ev.objOrNull("message")
+                    val upd = mObj?.let { runCatching { c.json.decodeFromJsonElement(ChatMessage.serializer(), it) }.getOrNull() }
+                    if (upd != null) {
+                        messages = messages.map { cur ->
+                            if (cur.id == upd.id) cur.copy(
+                                originalText = upd.originalText,
+                                translatedText = upd.translatedText,
+                                isTranslated = upd.isTranslated,
+                                sourceLang = upd.sourceLang,
+                            ) else cur
+                        }
+                    }
+                }
+                "chat_delivered" -> {
+                    messages = messages.map { cur ->
+                        if (cur.senderId == me?.id && cur.status == "sent") cur.copy(status = "delivered") else cur
+                    }
+                }
+                "chat_read" -> {
+                    messages = messages.map { cur ->
+                        if (cur.senderId == me?.id && (cur.status == "sent" || cur.status == "delivered")) cur.copy(status = "read") else cur
+                    }
+                }
+                "message_deleted" -> {
+                    val mid = ev.str("message_id")
+                    if (mid != null) {
+                        messages = messages.map { cur -> if (cur.id == mid) cur.copy(deleted = true, audioId = null) else cur }
+                    }
+                }
+            }
         }
     }
 
@@ -658,6 +716,7 @@ fun ChatConversationScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            c.appSocket.sendChatFocus(null)
             playJob?.cancel()
             activePlayer?.release()
             activePlayer = null
@@ -718,37 +777,82 @@ fun ChatConversationScreen(
         }
     }
 
-    fun sendText() {
-        val text = textInput.trim()
-        if (text.isEmpty() || sending) return
-        textInput = ""
-        sending = true
+    fun sendText(retryMessage: ChatMessage? = null) {
+        val text = retryMessage?.originalText ?: textInput.trim()
+        if (text.isEmpty()) return
+        val localId = retryMessage?.id ?: "local-${java.util.UUID.randomUUID()}"
+        val lang = retryMessage?.sourceLang ?: c.effectiveMyLanguage()
+        if (retryMessage == null) {
+            textInput = ""
+            val optimistic = ChatMessage(
+                id = localId,
+                conversationId = conversationId,
+                senderId = me?.id ?: "",
+                senderName = me?.displayName ?: "You",
+                sourceLang = lang,
+                originalText = text,
+                translatedText = text,
+                createdAt = System.currentTimeMillis() / 1000.0,
+                status = "sending",
+            )
+            messages = messages + optimistic
+        } else {
+            messages = messages.map { if (it.id == localId) it.copy(status = "sending") else it }
+        }
         scope.launch {
             try {
-                c.api.sendChatMessage(conversationId, text, language = c.effectiveMyLanguage())
-                loadMessages()
+                val res = c.api.sendChatMessage(conversationId, text, language = lang)
+                val confirmed = res.message.copy(status = res.message.status ?: "sent")
+                messages = messages.filterNot { it.id == confirmed.id }.map { if (it.id == localId) confirmed else it }
+                error = null
             } catch (e: ApiException) {
+                messages = messages.map { if (it.id == localId) it.copy(status = "failed") else it }
                 error = e.message
-            } finally {
-                sending = false
             }
         }
     }
 
-    suspend fun uploadRecordedVoice(pcm: ByteArray) {
+    suspend fun uploadRecordedVoice(pcm: ByteArray, retryLocalId: String? = null) {
         if (pcm.size > MAX_VOICE_BYTES) {
             error = "Voice message exceeds the 60-second size limit."
             return
         }
+        val localId = retryLocalId ?: "local-voice-${java.util.UUID.randomUUID()}"
+        val lang = c.effectiveMyLanguage()
+        val tag = if (isVoicemail) "voicemail" else null
+        val durationMs = (pcm.size / 32L).coerceAtLeast(500L)
+        if (retryLocalId == null) {
+            val optimistic = ChatMessage(
+                id = localId,
+                conversationId = conversationId,
+                senderId = me?.id ?: "",
+                senderName = me?.displayName ?: "You",
+                sourceLang = lang,
+                originalText = "[Voice Message]",
+                translatedText = "[Voice Message]",
+                audioId = "pending",
+                durationMs = durationMs,
+                createdAt = System.currentTimeMillis() / 1000.0,
+                status = "sending",
+                tag = tag,
+            )
+            messages = messages + optimistic
+        } else {
+            messages = messages.map { if (it.id == localId) it.copy(status = "sending") else it }
+        }
         uploadingVoice = true
         error = null
         try {
-            c.api.sendChatVoice(conversationId, language = c.effectiveMyLanguage(), pcm = pcm)
+            val res = c.api.sendChatVoice(conversationId, language = lang, pcm = pcm, tag = tag)
+            val confirmed = res.message.copy(status = res.message.status ?: "sent")
             failedVoicePcm = null
-            loadMessages()
+            failedVoicePcms.remove(localId)
+            messages = messages.filterNot { it.id == confirmed.id }.map { if (it.id == localId) confirmed else it }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             failedVoicePcm = pcm
+            failedVoicePcms[localId] = pcm
+            messages = messages.map { if (it.id == localId) it.copy(status = "failed") else it }
             error = (e as? ApiException)?.message ?: "Voice message upload failed. Tap Retry."
         } finally {
             uploadingVoice = false
@@ -867,8 +971,16 @@ fun ChatConversationScreen(
                         isPlayingTrans = transPlaying,
                         playProgress = if (origPlaying || transPlaying) playProgress else 0f,
                         onToggleOriginal = { showOriginalMap[msg.id] = !isOrig },
-                        onPlayOriginal = { playVoice(msg, translated = false) },
-                        onPlayTranslated = { playVoice(msg, translated = true) },
+                        onPlayOriginal = { if (msg.audioId != "pending") playVoice(msg, translated = false) },
+                        onPlayTranslated = { if (msg.audioId != "pending") playVoice(msg, translated = true) },
+                        onRetry = {
+                            if (msg.audioId != null) {
+                                val pcm = failedVoicePcms[msg.id]
+                                if (pcm != null) scope.launch { uploadRecordedVoice(pcm, retryLocalId = msg.id) }
+                            } else {
+                                sendText(retryMessage = msg)
+                            }
+                        },
                         onDelete = { everyone ->
                             scope.launch {
                                 try { c.api.deleteChatMessage(msg.id, everyone); loadMessages() } catch (e: ApiException) { error = e.message }
@@ -1103,6 +1215,7 @@ private fun ChatMessageBubble(
     onToggleOriginal: () -> Unit,
     onPlayOriginal: () -> Unit,
     onPlayTranslated: () -> Unit,
+    onRetry: () -> Unit = {},
     onDelete: (forEveryone: Boolean) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -1125,7 +1238,11 @@ private fun ChatMessageBubble(
             Modifier.clip(RoundedCornerShape(16.dp))
                 .background(bubbleColor)
                 .border(if (!isMe) 1.dp else 0.dp, Brand.Borders, RoundedCornerShape(16.dp))
-                .combinedClickable(onClick = {}, onLongClick = { menu = true }, onLongClickLabel = "Message options")
+                .combinedClickable(
+                    onClick = { if (isMe && message.status == "failed") onRetry() },
+                    onLongClick = { menu = true },
+                    onLongClickLabel = "Message options",
+                )
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -1142,6 +1259,15 @@ private fun ChatMessageBubble(
                         style = MaterialTheme.typography.bodyMedium, color = textColor.copy(alpha = 0.7f),
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                 } else if (message.audioId != null) {
+                    if (message.tag == "voicemail") {
+                        Text(
+                            "Voicemail",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isMe) Brand.HighlightAccent else Brand.PrimaryAccent,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
                     // WhatsApp-style voice message bubble with Play/Pause + Waveform progress + Duration
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
@@ -1245,12 +1371,37 @@ private fun ChatMessageBubble(
                     )
                     if (isMe && message.status != null && !message.deleted) {
                         Spacer(Modifier.width(4.dp))
-                        Icon(
-                            if (message.status == "sent") Icons.Filled.Done else Icons.Filled.DoneAll,
-                            contentDescription = when (message.status) { "read" -> "Read"; "delivered" -> "Delivered"; else -> "Sent" },
-                            tint = if (message.status == "read") Brand.SoftBg else textColor.copy(alpha = 0.6f),
-                            modifier = Modifier.size(14.dp),
-                        )
+                        when (message.status) {
+                            "sending" -> Icon(
+                                Icons.Filled.Schedule,
+                                contentDescription = "Sending",
+                                tint = textColor.copy(alpha = 0.6f),
+                                modifier = Modifier.size(13.dp),
+                            )
+                            "failed" -> Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { onRetry() },
+                            ) {
+                                Icon(
+                                    Icons.Filled.ErrorOutline,
+                                    contentDescription = "Failed",
+                                    tint = Brand.Danger,
+                                    modifier = Modifier.size(13.dp),
+                                )
+                                Spacer(Modifier.width(2.dp))
+                                Text(
+                                    "Failed, tap to retry",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = Brand.Danger,
+                                )
+                            }
+                            else -> Icon(
+                                if (message.status == "sent") Icons.Filled.Done else Icons.Filled.DoneAll,
+                                contentDescription = when (message.status) { "read" -> "Read"; "delivered" -> "Delivered"; else -> "Sent" },
+                                tint = if (message.status == "read") Brand.SoftBg else textColor.copy(alpha = 0.6f),
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
                     }
                 }
             }

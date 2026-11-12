@@ -3,6 +3,7 @@ package ai.mack.sarvagyan.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
@@ -141,33 +142,53 @@ class AvatarStore(
     companion object {
         /** Crops to a square centered horizontally with top bias, scales to <=512px, and compresses to WebP. */
         fun prepareAvatarUpload(context: Context, uri: Uri): ByteArray {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                ?: error("Could not open selected image.")
-            val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
-            var sample = 1
-            while (maxDim / sample > 1024) sample *= 2
-
-            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-            var bmp = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-                ?: error("Could not decode selected image.")
-
-            val orientation = runCatching {
-                context.contentResolver.openInputStream(uri)?.use {
-                    ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-                } ?: ExifInterface.ORIENTATION_NORMAL
-            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-
-            val matrix = Matrix()
-            when (orientation) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-                ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-                ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            var bmp: Bitmap? = null
+            if (Build.VERSION.SDK_INT >= 28) {
+                bmp = runCatching {
+                    val src = ImageDecoder.createSource(context.contentResolver, uri)
+                    ImageDecoder.decodeBitmap(src) { decoder, info, _ ->
+                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        val maxSide = maxOf(info.size.width, info.size.height)
+                        if (maxSide > 1024) {
+                            val scale = 1024f / maxSide
+                            decoder.setTargetSize(
+                                (info.size.width * scale).toInt().coerceAtLeast(1),
+                                (info.size.height * scale).toInt().coerceAtLeast(1),
+                            )
+                        }
+                    }
+                }.getOrNull()
             }
-            if (!matrix.isIdentity) {
-                val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
-                if (rotated !== bmp) bmp.recycle()
-                bmp = rotated
+            if (bmp == null) {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                    ?: error("Could not open selected image.")
+                val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
+                if (maxDim <= 0) error("Unsupported or unreadable image format.")
+                var sample = 1
+                while (maxDim / sample > 1024) sample *= 2
+
+                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                bmp = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+                    ?: error("Could not decode selected image.")
+
+                val orientation = runCatching {
+                    context.contentResolver.openInputStream(uri)?.use {
+                        ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+                    } ?: ExifInterface.ORIENTATION_NORMAL
+                }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+                val matrix = Matrix()
+                when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                    ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                }
+                if (!matrix.isIdentity) {
+                    val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                    if (rotated !== bmp) bmp.recycle()
+                    bmp = rotated
+                }
             }
 
             val side = min(bmp.width, bmp.height)
