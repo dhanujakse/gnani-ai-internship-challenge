@@ -36,6 +36,7 @@ object VoicemailRecorder {
         val out = ByteArrayOutputStream()
         val buf = ShortArray(rate / 20) // 50 ms
         var samples = 0L
+        var lastProgressMs = -100L
         try {
             rec.startRecording()
             while (currentCoroutineContext().isActive && !shouldStop()) {
@@ -45,7 +46,10 @@ object VoicemailRecorder {
                 out.write(Pcm.shortsToBytes(Pcm.resample(chunk, rate)))
                 samples += n
                 val elapsed = samples * 1000 / rate
-                onProgress(elapsed, rms(chunk))
+                if (elapsed - lastProgressMs >= 100L) {
+                    lastProgressMs = elapsed
+                    onProgress(elapsed, rms(chunk))
+                }
                 if (elapsed >= maxMs) break
             }
         } finally {

@@ -168,6 +168,10 @@ fun SettingsScreen(
     var usernameError by remember { mutableStateOf<String?>(null) }
     var usernameSaved by remember { mutableStateOf(false) }
     var usernameBusy by remember { mutableStateOf(false) }
+    var phoneDraft by remember { mutableStateOf("") }
+    var phoneError by remember { mutableStateOf<String?>(null) }
+    var phoneSaved by remember { mutableStateOf(false) }
+    var phoneBusy by remember { mutableStateOf(false) }
     var serverDraft by remember(s.serverUrl) { mutableStateOf(s.serverUrl) }
     var diag by remember { mutableStateOf<JsonObject?>(null) }
     var diagError by remember { mutableStateOf<String?>(null) }
@@ -297,6 +301,49 @@ fun SettingsScreen(
                     }
                 }
             }, enabled = usernameDraft.isNotBlank() && usernameDraft != (user?.username ?: "") && !usernameBusy)
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            OutlinedTextField(
+                value = phoneDraft,
+                onValueChange = {
+                    phoneDraft = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20)
+                    phoneError = null
+                    phoneSaved = false
+                },
+                label = { Text("Phone number (for contact discovery)") },
+                placeholder = { Text("+91 98765 43210") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            phoneError?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (phoneSaved) {
+                Spacer(Modifier.height(4.dp))
+                Text("Phone number saved for contact discovery!", color = LocalCallColors.current.success, style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(8.dp))
+            SecondaryButton("Save phone number", {
+                val norm = normalizePhoneE164(phoneDraft, "+91")
+                if (norm == null) {
+                    phoneError = "Enter a valid phone number (e.g. +919876543210)."
+                    return@SecondaryButton
+                }
+                phoneBusy = true
+                phoneError = null
+                phoneSaved = false
+                scope.launch {
+                    try {
+                        val updated = c.api.updateMe(phoneHash = sha256Hex(norm))
+                        c.user.value = updated
+                        phoneSaved = true
+                    } catch (e: Exception) {
+                        phoneError = (e as? ApiException)?.message ?: e.message
+                    } finally {
+                        phoneBusy = false
+                    }
+                }
+            }, enabled = phoneDraft.isNotBlank() && !phoneBusy)
         }
 
         DevicesCard()

@@ -168,7 +168,7 @@ fun normalizePhoneE164(raw: String, defaultCountryCode: String = "+91"): String?
     return null
 }
 
-private fun sha256Hex(s: String): String {
+internal fun sha256Hex(s: String): String {
     val md = MessageDigest.getInstance("SHA-256")
     val bytes = md.digest(s.toByteArray(Charsets.UTF_8))
     return bytes.joinToString("") { "%02x".format(it) }
@@ -253,6 +253,8 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     var contacts by remember { mutableStateOf<List<ContactUser>?>(null) }
     var blocked by remember { mutableStateOf<List<ContactUser>>(emptyList()) }
     var username by remember { mutableStateOf("") }
+    var manualPhone by remember { mutableStateOf("") }
+    var findingPhone by remember { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf<List<UserSearchResult>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var searchAttempted by remember { mutableStateOf(false) }
@@ -481,6 +483,50 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                                 onClick = { usernameFocus.requestFocus() },
                                 enabled = username.isBlank() && !adding,
                             ) { Icon(Icons.Filled.PersonAdd, "Add contact") }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        fun addByPhone() {
+                            val norm = normalizePhoneE164(manualPhone, "+91")
+                            if (norm == null) {
+                                error = "Enter a valid phone number (e.g. +919876543210)."
+                                return
+                            }
+                            findingPhone = true
+                            error = null
+                            scope.launch {
+                                try {
+                                    val matches = c.api.matchPhones(listOf(sha256Hex(norm))).matches
+                                    val found = matches.firstOrNull()
+                                    if (found == null) {
+                                        error = "No Sarvagyan user found with that phone number."
+                                    } else {
+                                        val added = c.api.addContact(userId = found.id)
+                                        mergeContact(added)
+                                        manualPhone = ""
+                                    }
+                                } catch (e: ApiException) {
+                                    error = e.message
+                                } finally {
+                                    findingPhone = false
+                                }
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                manualPhone,
+                                { manualPhone = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
+                                label = { Text("Or add by phone number") },
+                                placeholder = { Text("+91 98765 43210") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = { addByPhone() }),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            IconButton(
+                                onClick = { addByPhone() },
+                                enabled = manualPhone.isNotBlank() && !findingPhone && !adding,
+                            ) { Icon(Icons.Filled.PersonAdd, "Add by phone number") }
                         }
                     }
 
