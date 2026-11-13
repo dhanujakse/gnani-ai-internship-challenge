@@ -240,7 +240,9 @@ fun AuthScreen(onSignedIn: (isNewAccount: Boolean) -> Unit) {
     var usernameAvailable by remember { mutableStateOf(false) }
     var checkingUsername by remember { mutableStateOf(false) }
     var accountLanguage by remember { mutableStateOf<String?>(null) }
+    var phone by remember { mutableStateOf("") }
     var guestName by remember { mutableStateOf("") }
+    var guestPhone by remember { mutableStateOf("") }
     var guestLanguage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -345,6 +347,16 @@ fun AuthScreen(onSignedIn: (isNewAccount: Boolean) -> Unit) {
                 onSelect = { accountLanguage = it }
             )
             Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { phone = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
+                label = { Text("Phone number (optional, for contact discovery)") },
+                placeholder = { Text("Type your number") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
         }
         OutlinedTextField(email, { email = it.trim() }, label = { Text("Email") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
@@ -367,8 +379,9 @@ fun AuthScreen(onSignedIn: (isNewAccount: Boolean) -> Unit) {
                 } else {
                     val cleanUsername = username.trim().removePrefix("@")
                     val chosen = accountLanguage!!
+                    val phoneHash = phone.takeIf { it.isNotBlank() }?.let { normalizePhoneE164(it, "+91") }?.let { sha256Hex(it) }
                     run(true) {
-                        val sess = c.api.register(email, password, name.ifBlank { email.substringBefore('@') }, cleanUsername, language = chosen)
+                        val sess = c.api.register(email, password, name.ifBlank { email.substringBefore('@') }, cleanUsername, language = chosen, phoneHash = phoneHash)
                         c.settingsStore.update { it.copy(myLanguage = chosen) }
                         sess
                     }
@@ -391,10 +404,21 @@ fun AuthScreen(onSignedIn: (isNewAccount: Boolean) -> Unit) {
             onSelect = { guestLanguage = it }
         )
         Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = guestPhone,
+            onValueChange = { guestPhone = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
+            label = { Text("Phone number (optional, for contact discovery)") },
+            placeholder = { Text("Type your number") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
         SecondaryButton("Continue as guest (demo)", {
             val chosen = guestLanguage!!
+            val phoneHash = guestPhone.takeIf { it.isNotBlank() }?.let { normalizePhoneE164(it, "+91") }?.let { sha256Hex(it) }
             run(true) {
-                val sess = c.api.demo(guestName.ifBlank { "Guest" }, language = chosen)
+                val sess = c.api.demo(guestName.ifBlank { "Guest" }, language = chosen, phoneHash = phoneHash)
                 c.settingsStore.update { it.copy(myLanguage = chosen) }
                 sess
             }

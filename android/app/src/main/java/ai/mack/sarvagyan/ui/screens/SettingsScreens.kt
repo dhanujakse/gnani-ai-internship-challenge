@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -43,6 +44,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -309,9 +311,10 @@ fun SettingsScreen(
                     phoneError = null
                     phoneSaved = false
                 },
-                label = { Text("Phone number (for contact discovery)") },
-                placeholder = { Text("+91 98765 43210") },
+                label = { Text("Phone number") },
+                placeholder = { Text("Type your number") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 modifier = Modifier.fillMaxWidth()
             )
             phoneError?.let {
@@ -326,7 +329,7 @@ fun SettingsScreen(
             SecondaryButton("Save phone number", {
                 val norm = normalizePhoneE164(phoneDraft, "+91")
                 if (norm == null) {
-                    phoneError = "Enter a valid phone number (e.g. +919876543210)."
+                    phoneError = "Enter a valid phone number."
                     return@SecondaryButton
                 }
                 phoneBusy = true

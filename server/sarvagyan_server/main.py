@@ -521,6 +521,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         username: str | None = None
         language: str | None = None
         device: str | None = Field(default=None, max_length=60)
+        phone_hash: str | None = None
 
     class RefreshIn(BaseModel):
         refresh_token: str = Field(min_length=10, max_length=200)
@@ -656,6 +657,8 @@ def create_app(services: Services | None = None) -> FastAPI:
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from None
         user = s.db.create_user(body.display_name.strip(), None, None, is_demo=True, username=uname, language=lang)
+        if body.phone_hash:
+            s.db.update_user(user["id"], phone_hash=body.phone_hash.strip().lower())
         return session(user, s, body.device)
 
     class MeIn(BaseModel):

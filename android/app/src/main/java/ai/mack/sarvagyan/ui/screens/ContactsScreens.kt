@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -262,6 +263,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     var error by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
     val usernameFocus = remember { FocusRequester() }
+    val phoneFocus = remember { FocusRequester() }
     val placeCall = rememberPlaceCall(onCallStarted)
 
     var hasContactPermission by remember {
@@ -394,13 +396,61 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     fun String.normFilter(): String = lowercase().replace(" ", "").replace("-", "")
 
     val phoneByHash = remember(phoneContacts) { phoneContacts.associate { it.hash to it.number } }
-    val matchedHashes = remember(matchedUsers) { matchedUsers.mapNotNull { it.phoneHash }.toSet() }
-    val unmatched = remember(phoneContacts, matchedHashes) { phoneContacts.filter { it.hash !in matchedHashes } }
+    val allMatched = remember(matchedUsers, phoneContacts, contacts) {
+        val list = matchedUsers.toMutableList()
+        val existingIds = list.map { it.id }.toSet()
+        val existingHashes = list.mapNotNull { it.phoneHash }.toSet()
+
+        // Match any device contacts against user's existing Sarvagyan contacts list by name or username
+        phoneContacts.forEach { pc ->
+            if (pc.hash !in existingHashes) {
+                val pcNorm = pc.name.normFilter()
+                val match = contacts?.firstOrNull { c ->
+                    c.id !in existingIds && (
+                        c.name.normFilter() == pcNorm ||
+                        (c.username?.normFilter() != null && c.username.normFilter() == pcNorm) ||
+                        (pcNorm.length >= 4 && c.name.normFilter().contains(pcNorm)) ||
+                        (c.name.normFilter().length >= 4 && pcNorm.contains(c.name.normFilter()))
+                    )
+                }
+                if (match != null) {
+                    list.add(
+                        MatchedContact(
+                            id = match.id,
+                            name = pc.name,
+                            username = match.username,
+                            avatar = match.avatar,
+                            language = match.language,
+                            phoneHash = pc.hash,
+                        )
+                    )
+                }
+            }
+        }
+        list
+    }
+
+    val matchedHashes = remember(allMatched) { allMatched.mapNotNull { it.phoneHash }.toSet() }
+    val unmatched = remember(phoneContacts, matchedHashes, contacts) {
+        phoneContacts.filter { pc ->
+            if (pc.hash in matchedHashes) false
+            else {
+                val pcNorm = pc.name.normFilter()
+                val matchesKnown = contacts?.any { c ->
+                    c.name.normFilter() == pcNorm ||
+                    (c.username?.normFilter() != null && c.username.normFilter() == pcNorm) ||
+                    (pcNorm.length >= 4 && c.name.normFilter().contains(pcNorm)) ||
+                    (c.name.normFilter().length >= 4 && pcNorm.contains(c.name.normFilter()))
+                } == true
+                !matchesKnown
+            }
+        }
+    }
 
     val normQuery = remember(discoverQuery) { discoverQuery.normFilter() }
-    val filteredMatched = remember(matchedUsers, phoneByHash, normQuery) {
-        if (normQuery.isEmpty()) matchedUsers
-        else matchedUsers.filter { m ->
+    val filteredMatched = remember(allMatched, phoneByHash, normQuery) {
+        if (normQuery.isEmpty()) allMatched
+        else allMatched.filter { m ->
             m.name.normFilter().contains(normQuery) ||
                 (m.username?.normFilter()?.contains(normQuery) == true) ||
                 (m.phoneHash?.let { phoneByHash[it]?.normFilter()?.contains(normQuery) } == true)
@@ -488,7 +538,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                         fun addByPhone() {
                             val norm = normalizePhoneE164(manualPhone, "+91")
                             if (norm == null) {
-                                error = "Enter a valid phone number (e.g. +919876543210)."
+                                error = "Enter a valid phone number."
                                 return
                             }
                             findingPhone = true
@@ -515,17 +565,17 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                             OutlinedTextField(
                                 manualPhone,
                                 { manualPhone = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
-                                label = { Text("Or add by phone number") },
-                                placeholder = { Text("+91 98765 43210") },
+                                label = { Text("Add by phone number") },
+                                placeholder = { Text("Type phone number") },
                                 singleLine = true,
-                                modifier = Modifier.weight(1f),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                modifier = Modifier.weight(1f).focusRequester(phoneFocus),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
                                 keyboardActions = KeyboardActions(onDone = { addByPhone() }),
                             )
                             Spacer(Modifier.width(8.dp))
                             IconButton(
-                                onClick = { addByPhone() },
-                                enabled = manualPhone.isNotBlank() && !findingPhone && !adding,
+                                onClick = { phoneFocus.requestFocus() },
+                                enabled = manualPhone.isBlank() && !findingPhone && !adding,
                             ) { Icon(Icons.Filled.PersonAdd, "Add by phone number") }
                         }
                     }
@@ -691,7 +741,11 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(m.name, style = MaterialTheme.typography.titleMedium)
-                                        val sub = listOfNotNull(m.username?.let { "@$it" }, c.language(m.language)?.name ?: m.language).joinToString(" · ")
+                                        val sub = listOfNotNull(
+                                            m.username?.let { "@$it" },
+                                            c.language(m.language)?.name ?: m.language,
+                                            if (isExistingContact) "In Contacts" else null
+                                        ).joinToString(" · ")
                                         Text(sub, style = MaterialTheme.typography.bodyMedium, color = Brand.HighlightAccent)
                                     }
                                     IconButton(onClick = { onVoicemail(m.id, m.name) }) {

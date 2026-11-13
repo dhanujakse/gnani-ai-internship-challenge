@@ -587,7 +587,7 @@ fun LogoMark(size: Dp = 96.dp, animated: Boolean = true) {
         modifier = Modifier
             .size(size)
             .drawBehind {
-                drawCircle(
+                drawRoundRect(
                     brush = Brush.radialGradient(
                         colors = listOf(
                             highlight.copy(alpha = 0.22f * glow),
@@ -595,7 +595,7 @@ fun LogoMark(size: Dp = 96.dp, animated: Boolean = true) {
                         ),
                         radius = (this.size.minDimension / 2f) * 1.4f,
                     ),
-                    radius = (this.size.minDimension / 2f) * 1.4f,
+                    cornerRadius = CornerRadius(this.size.minDimension * 0.22f, this.size.minDimension * 0.22f),
                 )
             },
         contentAlignment = Alignment.Center,

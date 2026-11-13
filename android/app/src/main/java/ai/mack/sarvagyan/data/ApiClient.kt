@@ -130,12 +130,15 @@ class ApiClient(
     }
 
     suspend fun health(): Health = request("GET", "/health", null, Health.serializer())
-    suspend fun register(email: String, password: String, name: String, username: String? = null, language: String? = null): Session =
-        request("POST", "/v1/auth/register", obj("email" to email, "password" to password, "display_name" to name, "username" to username, "language" to language, "device" to deviceName), Session.serializer())
+    suspend fun register(
+        email: String, password: String, name: String, username: String? = null, language: String? = null,
+        phoneHash: String? = null,
+    ): Session =
+        request("POST", "/v1/auth/register", obj("email" to email, "password" to password, "display_name" to name, "username" to username, "language" to language, "device" to deviceName, "phone_hash" to phoneHash), Session.serializer())
     suspend fun login(email: String, password: String): Session =
         request("POST", "/v1/auth/login", obj("email" to email, "password" to password, "device" to deviceName), Session.serializer())
-    suspend fun demo(name: String, username: String? = null, language: String? = null): Session =
-        request("POST", "/v1/auth/demo", obj("display_name" to name, "username" to username, "language" to language, "device" to deviceName), Session.serializer())
+    suspend fun demo(name: String, username: String? = null, language: String? = null, phoneHash: String? = null): Session =
+        request("POST", "/v1/auth/demo", obj("display_name" to name, "username" to username, "language" to language, "device" to deviceName, "phone_hash" to phoneHash), Session.serializer())
     suspend fun refreshTokens(refreshToken: String): Session =
         request("POST", "/v1/auth/refresh", obj("refresh_token" to refreshToken), Session.serializer())
 
