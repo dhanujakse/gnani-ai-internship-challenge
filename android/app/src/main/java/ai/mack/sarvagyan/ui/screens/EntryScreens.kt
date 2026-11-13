@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,12 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import ai.mack.sarvagyan.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ai.mack.sarvagyan.data.Language
 import androidx.compose.material3.Icon
@@ -114,22 +121,60 @@ fun SplashScreen(onDone: (Any) -> Unit) {
         onDone(dest)
     }
     EmeraldAnimatedBackground {
+        // Reference design: Subtle mandala-inspired decorative pattern at top
+        Image(
+            painter = painterResource(R.drawable.bg_mandala_top),
+            contentDescription = null,
+            contentScale = ContentScale.FillWidth,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .alpha(0.85f)
+        )
+
+        // Reference design: Heritage skyline & colourful flowing curves at bottom
+        Image(
+            painter = painterResource(R.drawable.bg_splash_heritage),
+            contentDescription = null,
+            contentScale = ContentScale.FillWidth,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .alpha(0.95f)
+        )
+
         Column(
-            Modifier.fillMaxSize().padding(24.dp),
-            verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
+            Modifier.fillMaxSize().padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(Modifier.graphicsLayer { scaleX = logoScale.value; scaleY = logoScale.value; alpha = logoAlpha.value }) {
                 LogoMark(140.dp)
             }
             Spacer(Modifier.height(24.dp))
-            Text("Sarvagyan", style = MaterialTheme.typography.displaySmall, color = Brand.TextHi, modifier = rise)
-            Spacer(Modifier.height(20.dp))
-            AnimatedContent(words[word], transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) }, label = "word",
-                modifier = rise) {
-                Text(it, style = MaterialTheme.typography.titleLarge, color = Brand.TextMid)
+            Text(
+                "Sarvagyan",
+                style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
+                color = Brand.IvoryWhite,
+                modifier = rise
+            )
+            Spacer(Modifier.height(16.dp))
+            AnimatedContent(
+                words[word],
+                transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) },
+                label = "word",
+                modifier = rise
+            ) {
+                Text(it, style = MaterialTheme.typography.titleLarge, color = Brand.MintGreen)
             }
             Spacer(Modifier.height(12.dp))
-            Text("Speak Naturally. Understand Everyone.", style = MaterialTheme.typography.bodyLarge, color = Brand.TextMid, modifier = rise)
+            Text(
+                "Speak Naturally. Understand Everyone.",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                color = Brand.IvoryWhite,
+                textAlign = TextAlign.Center,
+                modifier = rise
+            )
         }
     }
 }

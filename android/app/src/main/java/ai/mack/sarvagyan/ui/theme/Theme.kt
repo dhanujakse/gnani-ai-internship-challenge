@@ -47,80 +47,104 @@ data class BrandColors(
     val cardSurfaceEnd: Color,
     val buttonContent: Color,
     val isDark: Boolean,
+    val saffron: Color = Color(0xFFFF8A00),
+    val deepRed: Color = Color(0xFFD7263D),
+    val gold: Color = Color(0xFFF4B323),
+    val emerald: Color = Color(0xFF00A878),
+    val blue: Color = Color(0xFF2585D8),
+    val purple: Color = Color(0xFF9638B5),
+    val deepTeal: Color = Color(0xFF002B24),
+    val darkEmerald: Color = Color(0xFF001A16),
+    val mintGreen: Color = Color(0xFFA8DCC5),
+    val ivoryWhite: Color = Color(0xFFF6F1E7),
+    val mutedGreen: Color = Color(0xFF829B90),
 )
 
 /**
- * Sarvagyan Dark Emerald Glow design system color palette (100% preserved).
- * Primary background: #06140E (Obsidian Black)
- * Secondary background: #0A281B (Deep Forest)
- * Card background: #0D2118
- * Primary accent: #00A86B (Emerald Green)
- * Highlight accent: #00D68F (Neon Mint)
- * Secondary highlight: #064D32 (Dark Emerald)
- * Primary text: #F2FFF7
- * Secondary text: #91A99A
- * Borders: #254637
- * Soft background: #DFF8EA
+ * Sarvagyan Reference Design Palette:
+ * Main background: Deep Teal #002B24
+ * Dark background: Dark Emerald #001A16
+ * Primary accent: Neon Emerald Green #00F0A0
+ * Secondary elements: Mint Green #A8DCC5
+ * Main text: Ivory / Soft White #F6F1E7
+ * Secondary text: Muted Green #829B90
+ * Saffron: #FF8A00, Red: #D7263D, Gold: #F4B323, Green: #00A878, Blue: #2585D8, Purple: #9638B5
  */
 val DarkBrandColors = BrandColors(
-    primaryBg = Color(0xFF06140E),           // Obsidian Black
-    secondaryBg = Color(0xFF0A281B),         // Deep Forest
-    cardBg = Color(0xFF0D2118),              // Card background
-    primaryAccent = Color(0xFF00A86B),       // Emerald Green
-    highlightAccent = Color(0xFF00D68F),     // Neon Mint
-    secondaryHighlight = Color(0xFF064D32),  // Dark Emerald
-    primaryText = Color(0xFFF2FFF7),         // Primary text
-    secondaryText = Color(0xFF91A99A),       // Secondary text
-    textLow = Color(0xFF6B8576),             // Muted text
-    borders = Color(0xFF254637),             // Borders
-    softBg = Color(0xFFDFF8EA),              // Soft background
-    danger = Color(0xFFFF4D5E),
-    warning = Color(0xFFFFB547),
-    success = Color(0xFF00D68F),
-    emeraldGlowSubtle = Color(0x2600D68F),   // 15% opacity Neon Mint
-    emeraldGlowMedium = Color(0x4D00D68F),   // 30% opacity Neon Mint
-    emeraldGlowIntense = Color(0x8000D68F),  // 50% opacity Neon Mint
-    ambientGlow = Color(0x1A00A86B),         // 10% opacity Emerald
-    glassCardBorder = Color(0x4000D68F),     // 25% glowing border
-    glassSurface = Color(0xD90D2118),        // 85% opacity CardBg
-    cardSurfaceEnd = Color(0xFF091A12),
-    buttonContent = Color(0xFF06140E),
+    primaryBg = Color(0xFF001A16),           // Dark Emerald
+    secondaryBg = Color(0xFF002B24),         // Deep Teal
+    cardBg = Color(0xFF00221C),              // Deep Emerald card surface
+    primaryAccent = Color(0xFF00F0A0),       // Neon Emerald Green
+    highlightAccent = Color(0xFF00F0A0),     // Neon Emerald Green
+    secondaryHighlight = Color(0xFF00382E),  // Deep Teal container
+    primaryText = Color(0xFFF6F1E7),         // Ivory / Soft White
+    secondaryText = Color(0xFF829B90),       // Muted Green
+    textLow = Color(0xFF5A7569),             // Muted Green subtle
+    borders = Color(0xFF134539),             // Deep Teal border
+    softBg = Color(0xFFA8DCC5),              // Mint Green
+    danger = Color(0xFFD7263D),              // Deep Red
+    warning = Color(0xFFFF8A00),             // Saffron
+    success = Color(0xFF00F0A0),             // Neon Emerald Green
+    emeraldGlowSubtle = Color(0x2600F0A0),   // 15% opacity Neon Emerald
+    emeraldGlowMedium = Color(0x4D00F0A0),   // 30% opacity Neon Emerald
+    emeraldGlowIntense = Color(0x8000F0A0),  // 50% opacity Neon Emerald
+    ambientGlow = Color(0x1A00F0A0),         // 10% opacity Neon Emerald
+    glassCardBorder = Color(0x4000F0A0),     // 25% glowing Neon Emerald border
+    glassSurface = Color(0xD900221C),        // 85% opacity CardBg
+    cardSurfaceEnd = Color(0xFF001A16),
+    buttonContent = Color(0xFF001A16),
     isDark = true,
+    saffron = Color(0xFFFF8A00),
+    deepRed = Color(0xFFD7263D),
+    gold = Color(0xFFF4B323),
+    emerald = Color(0xFF00A878),
+    blue = Color(0xFF2585D8),
+    purple = Color(0xFF9638B5),
+    deepTeal = Color(0xFF002B24),
+    darkEmerald = Color(0xFF001A16),
+    mintGreen = Color(0xFFA8DCC5),
+    ivoryWhite = Color(0xFFF6F1E7),
+    mutedGreen = Color(0xFF829B90),
 )
 
 /**
  * Sarvagyan Emerald Light Mode design system color palette.
- * Tailored to belong to the exact same emerald brand identity:
- * - Crisp, comfortable light mint-white background (#F4FAF6)
- * - Deep forest-black primary text with >14:1 contrast (#092015)
- * - Accessible mid-tone forest-green secondary text (#385846)
- * - Pure white cards with subtle mint-gray borders (#CBE3D5)
- * - Rich emerald primary interactive accents (#008955 / #007A4D)
  */
 val LightBrandColors = BrandColors(
-    primaryBg = Color(0xFFF4FAF6),           // Clean mint-white background
-    secondaryBg = Color(0xFFE5F3EC),         // Soft mint container
+    primaryBg = Color(0xFFF6FBF8),           // Clean mint-white background
+    secondaryBg = Color(0xFFE2F3EB),         // Soft mint container
     cardBg = Color(0xFFFFFFFF),              // Pure white card
-    primaryAccent = Color(0xFF008955),       // Deep accessible emerald
-    highlightAccent = Color(0xFF007A4D),     // Signature emerald accent
-    secondaryHighlight = Color(0xFFD4EDE0),  // Light emerald container
-    primaryText = Color(0xFF092015),         // Deep forest-black (>14:1 contrast)
-    secondaryText = Color(0xFF385846),       // Readable forest-green (>5.5:1 contrast)
+    primaryAccent = Color(0xFF00A878),       // Deep accessible emerald
+    highlightAccent = Color(0xFF00A878),     // Signature emerald accent
+    secondaryHighlight = Color(0xFFCDEBDD),  // Light emerald container
+    primaryText = Color(0xFF001A16),         // Dark emerald text
+    secondaryText = Color(0xFF385846),       // Readable forest-green
     textLow = Color(0xFF6B8B79),             // Muted forest gray
     borders = Color(0xFFCBE3D5),             // Clean mint border
-    softBg = Color(0xFFEAF5EE),              // Soft light container
-    danger = Color(0xFFD32F2F),              // Accessible red
-    warning = Color(0xFFC77700),             // Accessible amber
-    success = Color(0xFF008955),             // Vibrant emerald success
-    emeraldGlowSubtle = Color(0x18008955),
-    emeraldGlowMedium = Color(0x28008955),
-    emeraldGlowIntense = Color(0x38008955),
-    ambientGlow = Color(0x12008955),
-    glassCardBorder = Color(0x28008955),
+    softBg = Color(0xFFA8DCC5),              // Mint Green
+    danger = Color(0xFFD7263D),              // Deep Red
+    warning = Color(0xFFFF8A00),             // Saffron
+    success = Color(0xFF00A878),             // Emerald success
+    emeraldGlowSubtle = Color(0x1800A878),
+    emeraldGlowMedium = Color(0x2800A878),
+    emeraldGlowIntense = Color(0x3800A878),
+    ambientGlow = Color(0x1200A878),
+    glassCardBorder = Color(0x2800A878),
     glassSurface = Color(0xF2FFFFFF),
     cardSurfaceEnd = Color(0xFFF7FCF9),
     buttonContent = Color.White,
     isDark = false,
+    saffron = Color(0xFFFF8A00),
+    deepRed = Color(0xFFD7263D),
+    gold = Color(0xFFF4B323),
+    emerald = Color(0xFF00A878),
+    blue = Color(0xFF2585D8),
+    purple = Color(0xFF9638B5),
+    deepTeal = Color(0xFF002B24),
+    darkEmerald = Color(0xFF001A16),
+    mintGreen = Color(0xFFA8DCC5),
+    ivoryWhite = Color(0xFFF6F1E7),
+    mutedGreen = Color(0xFF829B90),
 )
 
 val LocalBrandColors = staticCompositionLocalOf { DarkBrandColors }
@@ -162,6 +186,20 @@ object Brand {
     val Warning: Color @Composable get() = LocalBrandColors.current.warning
     val Success: Color @Composable get() = LocalBrandColors.current.success
 
+    // Reference-based palette tokens
+    val Saffron: Color @Composable get() = LocalBrandColors.current.saffron
+    val DeepRed: Color @Composable get() = LocalBrandColors.current.deepRed
+    val Red: Color @Composable get() = LocalBrandColors.current.deepRed
+    val Gold: Color @Composable get() = LocalBrandColors.current.gold
+    val Emerald: Color @Composable get() = LocalBrandColors.current.emerald
+    val Blue: Color @Composable get() = LocalBrandColors.current.blue
+    val Purple: Color @Composable get() = LocalBrandColors.current.purple
+    val DeepTeal: Color @Composable get() = LocalBrandColors.current.deepTeal
+    val DarkEmerald: Color @Composable get() = LocalBrandColors.current.darkEmerald
+    val MintGreen: Color @Composable get() = LocalBrandColors.current.mintGreen
+    val IvoryWhite: Color @Composable get() = LocalBrandColors.current.ivoryWhite
+    val MutedGreen: Color @Composable get() = LocalBrandColors.current.mutedGreen
+
     // Glow accents
     val EmeraldGlowSubtle: Color @Composable get() = LocalBrandColors.current.emeraldGlowSubtle
     val EmeraldGlowMedium: Color @Composable get() = LocalBrandColors.current.emeraldGlowMedium
@@ -189,23 +227,23 @@ data class CallColors(
 )
 
 private val DarkCallColors = CallColors(
-    me = DarkBrandColors.highlightAccent,
-    meContainer = Color(0xFF0C2B1D),
-    peer = DarkBrandColors.primaryAccent,
-    peerContainer = DarkBrandColors.cardBg,
-    endCall = DarkBrandColors.danger,
+    me = DarkBrandColors.highlightAccent, // Neon Emerald
+    meContainer = Color(0xFF00382E),
+    peer = DarkBrandColors.emerald, // Emerald
+    peerContainer = DarkBrandColors.secondaryBg, // Deep Teal
+    endCall = DarkBrandColors.danger, // Deep Red
     success = DarkBrandColors.highlightAccent,
-    warning = DarkBrandColors.warning,
+    warning = DarkBrandColors.warning, // Saffron
 )
 
 private val LightCallColors = CallColors(
-    me = Color(0xFF008955),
+    me = Color(0xFF00A878),
     meContainer = Color(0xFFDDF5E8),
     peer = Color(0xFF00754A),
     peerContainer = Color(0xFFE5F7EE),
-    endCall = Color(0xFFD32F2F),
-    success = Color(0xFF008955),
-    warning = Color(0xFFC77700),
+    endCall = Color(0xFFD7263D),
+    success = Color(0xFF00A878),
+    warning = Color(0xFFFF8A00),
 )
 
 val LocalCallColors = staticCompositionLocalOf { DarkCallColors }
@@ -215,24 +253,24 @@ private val DarkScheme = darkColorScheme(
     onPrimary = DarkBrandColors.primaryBg,
     primaryContainer = DarkBrandColors.secondaryHighlight,
     onPrimaryContainer = DarkBrandColors.primaryText,
-    secondary = DarkBrandColors.highlightAccent,
+    secondary = DarkBrandColors.softBg,
     onSecondary = DarkBrandColors.primaryBg,
     secondaryContainer = DarkBrandColors.secondaryBg,
     onSecondaryContainer = DarkBrandColors.primaryText,
-    tertiary = DarkBrandColors.highlightAccent,
+    tertiary = DarkBrandColors.emerald,
     onTertiary = DarkBrandColors.primaryBg,
     background = DarkBrandColors.primaryBg,
     onBackground = DarkBrandColors.primaryText,
     surface = DarkBrandColors.primaryBg,
     onSurface = DarkBrandColors.primaryText,
-    surfaceVariant = DarkBrandColors.cardBg,
+    surfaceVariant = DarkBrandColors.secondaryBg,
     onSurfaceVariant = DarkBrandColors.secondaryText,
     surfaceContainer = DarkBrandColors.cardBg,
-    surfaceContainerHigh = Color(0xFF10281E),
-    surfaceContainerHighest = Color(0xFF153427),
-    surfaceContainerLow = DarkBrandColors.secondaryBg,
+    surfaceContainerHigh = Color(0xFF002E26),
+    surfaceContainerHighest = Color(0xFF003B31),
+    surfaceContainerLow = Color(0xFF001F1A),
     outline = DarkBrandColors.borders,
-    outlineVariant = Color(0xFF183326),
+    outlineVariant = Color(0xFF1A5244),
     error = DarkBrandColors.danger,
     onError = Color.White,
 )
