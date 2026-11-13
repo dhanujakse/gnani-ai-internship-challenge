@@ -1,17 +1,9 @@
 import type { NextConfig } from "next";
 
+// Tailwind CSS runs through PostCSS (postcss.config.mjs) for both Turbopack (dev) and webpack (build).
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
 };
 
 export default nextConfig;

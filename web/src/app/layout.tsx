@@ -1,14 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Sarvagyan — Speak Naturally. Understand Everyone.",
   description:
-    "Real-time multilingual voice translation and calling powered by Gnani AI. Live speech recognition, instant translation across 10 Indian languages, and neural voice playback.",
+    "Voice calls across languages. You speak yours, they hear theirs, with live subtitles on both sides. Tamil, English and 8 more Indian languages.",
   icons: {
     icon: "/logo.png",
     apple: "/logo.png",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#071b20",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -17,10 +23,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
-      <body className="min-h-full flex flex-col bg-[#071B20] text-[#F5F7F2] antialiased">
-        {children}
-      </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }

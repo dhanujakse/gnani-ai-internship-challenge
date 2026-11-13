@@ -59,6 +59,16 @@ log = logging.getLogger("sarvagyan")
 WAITING_TTL_S = 15 * 60
 MAX_WS_TEXT = 64 * 1024
 MAX_FRAME = 4096
+WS_PROTOCOL = "sarvagyan.v1"  # browsers can't set headers on a WebSocket: they offer [WS_PROTOCOL, "auth.<token>"]
+
+
+def ws_credentials(ws: WebSocket) -> tuple[str, str | None]:
+    """The access token (Authorization header from the app, or the `auth.` subprotocol from a browser) and the
+    subprotocol to accept with. The token is never taken from the URL (URLs end up in logs) and never echoed back."""
+    header = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    offered = [p.strip() for p in (ws.headers.get("sec-websocket-protocol") or "").split(",") if p.strip()]
+    from_protocol = next((p.removeprefix("auth.") for p in offered if p.startswith("auth.")), "")
+    return header or from_protocol, (WS_PROTOCOL if WS_PROTOCOL in offered else None)
 
 
 class Services:
@@ -455,7 +465,10 @@ def create_app(services: Services | None = None) -> FastAPI:
     app = FastAPI(title="Sarvagyan API", version=__version__, lifespan=lifespan)
     if services is not None:
         app.state.services = services
-    app.add_middleware(CORSMiddleware, allow_origins=[], allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
+    origin_cfg = (services.settings if services is not None else get_settings()).web_origins
+    web_origins = [o.strip().rstrip("/") for o in origin_cfg.split(",") if o.strip()]
+    app.add_middleware(CORSMiddleware, allow_origins=web_origins, allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+                       allow_headers=["Authorization", "Content-Type"])  # fmt: skip
 
     def svc() -> Services:
         return app.state.services
@@ -821,13 +834,14 @@ def create_app(services: Services | None = None) -> FastAPI:
             out["speech_recognition"] = {"ok": True, "ms": int((time.monotonic() - t0) * 1000)}
         except Exception as exc:  # report, never raise
             out["speech_recognition"] = {"ok": False, "error": getattr(exc, "message", type(exc).__name__)}
+        # the real translator path (Google first, then MyMemory with the account email), one word, usually cached
         t0 = time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=5) as c:
-                r = await c.get("https://api.mymemory.translated.net/get", params={"q": "ok", "langpair": "en|ta"})
-            out["translation"] = {"ok": r.status_code == 200, "ms": int((time.monotonic() - t0) * 1000)}
-        except httpx.HTTPError:
-            out["translation"] = {"ok": False, "error": "unreachable"}
+            res = await asyncio.wait_for(s.translator.translate("hello", "en-IN", "ta-IN"), 10)
+            out["translation"] = {"ok": bool(res.strip()) and res.strip().lower() != "hello",
+                                  "ms": int((time.monotonic() - t0) * 1000)}  # fmt: skip
+        except Exception as exc:  # report, never raise
+            out["translation"] = {"ok": False, "error": getattr(exc, "message", type(exc).__name__)}
         return out
 
     # --- calls --------------------------------------------------------------------------
@@ -1420,6 +1434,9 @@ def create_app(services: Services | None = None) -> FastAPI:
         try:
             async for chunk in synth.synthesize(text_to_speak, target_lang, voice, 1.0):
                 chunks.append(chunk)
+        except ProviderError as exc:
+            log.warning("chat translated audio failed msg=%s provider=%s code=%s", mid[:8], exc.provider, exc.code)
+            raise HTTPException(503, "Couldn't create the translated voice right now. Play the original instead.") from None
         finally:
             close_fn = getattr(synth, "close", None)
             if close_fn is not None:
@@ -1456,13 +1473,12 @@ def create_app(services: Services | None = None) -> FastAPI:
     @app.websocket("/v1/chat/ws")
     async def chat_socket(ws: WebSocket) -> None:
         s: Services = app.state.services
-        # the token comes only in the Authorization header, never in the URL (URLs end up in logs)
-        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+        auth_token, subprotocol = ws_credentials(ws)  # never from the URL (URLs end up in logs)
         user = s.user_for_token(auth_token)
         if user is None:
             await ws.close(code=4401, reason="unauthorized")
             return
-        await ws.accept()
+        await ws.accept(subprotocol=subprotocol)
         ws.session_id = user["session_id"]
         s.chat_sockets[user["id"]].add(ws)
         try:
@@ -1509,7 +1525,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     @app.websocket("/v1/calls/{call_id}/ws")
     async def call_socket(ws: WebSocket, call_id: str) -> None:
         s: Services = app.state.services
-        auth_token = (ws.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+        auth_token, subprotocol = ws_credentials(ws)
         user = s.user_for_token(auth_token)
         call = s.calls.get(call_id)
         if user is None:
@@ -1518,7 +1534,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         if call is None or user["id"] not in call["participants"]:
             await ws.close(code=4404, reason="call not found or not invited")
             return
-        await ws.accept()
+        await ws.accept(subprotocol=subprotocol)
 
         async def send(item: dict | bytes) -> None:
             if isinstance(item, bytes):

@@ -55,8 +55,11 @@ async def test_mymemory_parses_and_caches() -> None:
     tr = _mm(handler)
     assert await tr.translate("என் போன் சார்ஜ் ஆகவில்லை", "ta-IN", "en-IN") == "My phone isn't charging"
     assert await tr.translate("என் போன் சார்ஜ் ஆகவில்லை", "ta-IN", "en-IN") == "My phone isn't charging"
-    assert len(seen) == 1 and seen[0]["langpair"] == "ta|en" and seen[0]["de"] == "dev@example.com"
-    assert await tr.translate("same", "en-IN", "en-IN") == "same" and len(seen) == 1
+    # Google GTX is tried first; this fake only speaks MyMemory, so GTX fails over to one MyMemory call.
+    mm = [p for p in seen if "langpair" in p]
+    assert len(seen) == 2 and seen[0].get("client") == "gtx"  # second translate came from the cache
+    assert len(mm) == 1 and mm[0]["langpair"] == "ta|en" and mm[0]["de"] == "dev@example.com"
+    assert await tr.translate("same", "en-IN", "en-IN") == "same" and len(seen) == 2
 
 
 @pytest.mark.parametrize(

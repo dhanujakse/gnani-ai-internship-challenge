@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     admin_token: SecretStr = SecretStr("")  # enables GET /v1/admin/usage (header X-Admin-Token)
     chat_retention_days: int = 30  # chat messages and voice clips are deleted after this
     trust_proxy_headers: bool = False  # true only behind Cloudflare: use CF-Connecting-IP for rate limits
+    # websites allowed to call the API from a browser (the Sarvagyan web app), comma-separated
+    web_origins: str = "https://gnani-ai-internship-challenge.vercel.app,http://localhost:3000"
     log_level: str = "INFO"
 
     @property
