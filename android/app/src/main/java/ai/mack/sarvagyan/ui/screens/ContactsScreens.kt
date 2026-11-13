@@ -239,7 +239,7 @@ private fun readDeviceContacts(context: Context): ContactSyncStats {
 private fun shareInvite(context: Context, contactName: String) {
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, "Join me on Sarvagyan for real-time multilingual voice translation! Download: https://sarvagyan.app")
+        putExtra(Intent.EXTRA_TEXT, "Join me on Sarvagyan for real-time multilingual voice translation! Web App: https://gnani-ai-internship-challenge.vercel.app")
     }
     context.startActivity(Intent.createChooser(sendIntent, "Invite $contactName to Sarvagyan").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }

@@ -840,7 +840,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     def call_info(cid: str, call: dict) -> dict:
         return {"call_id": cid, "invite_code": call["code"],
-                "invite_link": f"https://sarvagyan.app/join/{call['code']}",
+                "invite_link": f"https://gnani-ai-internship-challenge.vercel.app/join?code={call['code']}",
                 "app_link": f"sarvagyan://join/{call['code']}", "participants": len(call["participants"])}  # fmt: skip
 
     @app.post("/v1/calls")
