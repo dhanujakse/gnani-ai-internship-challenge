@@ -20,9 +20,11 @@ server/data/
 .gradle/
 build/
 *.apk
+!web/public/*.apk
 *.mp4
 *.png
 !android/app/src/main/res/**/*.png
+!web/public/*.png
 android/app/release/
 .idea/
 *.iml
@@ -30,6 +32,10 @@ captures/
 .externalNativeBuild/
 .cxx/
 .kotlin/
+
+# Web / Node
+node_modules/
+.next/
 
 # deploy-from-pc.ps1 remembers the server IP, key path and DuckDNS name here (no secrets)
 deploy/.deploy.local.json

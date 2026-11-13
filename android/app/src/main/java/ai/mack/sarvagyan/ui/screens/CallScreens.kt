@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -517,12 +519,19 @@ private fun LanguageSheet(
             Text("Changes what you speak mid-call. Your peer's audio stays connected.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(16.dp))
+            val accentColors = listOf(Brand.Saffron, Brand.HeritageRed, Brand.RoyalGold, Brand.PeacockGreen, Brand.RoyalBlue, Brand.CulturalPurple)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 360.dp)) {
-                items(languages) { l ->
+                itemsIndexed(languages) { index, l ->
                     val isSelected = l.code == currentCode
+                    val langAccent = accentColors[index % accentColors.size]
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                            .background(if (isSelected) Brand.ElevatedSurface else Brand.CardBg)
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) Brand.SelectedBorder else langAccent.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(12.dp),
+                            )
                             .clickable {
                                 onSelect(l.code)
                                 onDismiss()
@@ -531,11 +540,16 @@ private fun LanguageSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(l.native, style = MaterialTheme.typography.bodyLarge, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                            Text(l.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                l.native,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Brand.SelectedBorder else Brand.PrimaryText,
+                            )
+                            Text(l.name, style = MaterialTheme.typography.bodySmall, color = Brand.SecondaryText)
                         }
                         if (isSelected) {
-                            Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Filled.Check, null, tint = Brand.SelectedBorder)
                         }
                     }
                 }

@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+:root {
+  --background: #071b20;
+  --foreground: #f5f7f2;
+  --secondary-bg: #0b292e;
+  --card-bg: #12363a;
+  --elevated-surface: #194449;
+  --accent-primary: #009b77;
+  --accent-highlight: #00cba0;
+  --accent-glow: #00f0a0;
+  --text-muted: #a9bfba;
+  --border-muted: #1e4d53;
+  --danger: #c62845;
+  --saffron: #ff8a24;
+  --royal-gold: #f5b52e;
+  --royal-blue: #2478c8;
+  --cultural-purple: #8950b5;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(1.05); }
+}
+
+@keyframes wave {
+  0%, 100% { height: 12px; }
+  50% { height: 32px; }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+.glow-card {
+  background: linear-gradient(180deg, #12363a 0%, #0b292e 100%);
+  border: 1px solid #1e4d53;
+  box-shadow: 0 8px 32px rgba(0, 203, 160, 0.08);
+}
+
+.glow-button {
+  background: linear-gradient(135deg, #009b77 0%, #00cba0 100%);
+  color: #071b20;
+  box-shadow: 0 4px 20px rgba(0, 240, 160, 0.25);
+  transition: all 0.2s ease-in-out;
+}
+
+.glow-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(0, 240, 160, 0.4);
+}

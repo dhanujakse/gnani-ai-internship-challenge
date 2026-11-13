@@ -504,11 +504,20 @@ fun Avatar(
 fun Waveform(
     color: Color = Color.Unspecified,
     modifier: Modifier = Modifier,
-    bars: Int = 5,
+    bars: Int = 6,
     active: Boolean = true,
 ) {
     val highlight = Brand.HighlightAccent
-    val barColor = if (color != Color.Unspecified) color else highlight
+    val auroraPalette = listOf(
+        Brand.Saffron,
+        Brand.RoyalGold,
+        Brand.PeacockGreen,
+        Brand.RoyalBlue,
+        Brand.CulturalPurple,
+        Brand.HeritageRed,
+    )
+    val isMulticolor = color == Color.Unspecified
+    val barColor = if (!isMulticolor) color else highlight
     val t = rememberInfiniteTransition(label = "wave")
     val phase by t.animateFloat(
         initialValue = 0f,
@@ -536,6 +545,9 @@ fun Waveform(
         }
 
         for (i in 0 until bars) {
+            val barTop = if (isMulticolor) auroraPalette[i % auroraPalette.size] else highlight
+            val barBottom = if (isMulticolor) auroraPalette[i % auroraPalette.size] else barColor
+
             val harmonic1 = sin(phase + i * 0.9f)
             val harmonic2 = sin(phase * 1.6f + i * 1.3f) * 0.35f
             val baseAmp = ((harmonic1 + harmonic2 + 1.35f) / 2.7f).coerceIn(0.2f, 1.0f)
@@ -547,7 +559,7 @@ fun Waveform(
 
             drawRoundRect(
                 brush = Brush.verticalGradient(
-                    colors = listOf(highlight, barColor),
+                    colors = listOf(barTop, barBottom),
                     startY = y,
                     endY = y + h,
                 ),
@@ -559,7 +571,7 @@ fun Waveform(
             // Sparkle dot above peak on alternate bars
             if (active && i % 2 == 1 && amp > 0.65f) {
                 drawCircle(
-                    color = highlight.copy(alpha = 0.75f),
+                    color = barTop.copy(alpha = 0.75f),
                     radius = (w * 0.35f),
                     center = Offset(x + w / 2f, (y - 3.dp.toPx()).coerceAtLeast(1.dp.toPx())),
                 )
@@ -820,26 +832,28 @@ fun SubtitleBubble(turn: Turn, playing: Boolean, textScale: Float, myLabel: Stri
 @Composable
 private fun TurnStatus(turn: Turn, playing: Boolean, accent: Color, onRetry: (String) -> Unit) {
     val muted = Brand.SecondaryText
+    val translatingColor = Brand.RoyalBlue // #2478C8 Translating state
+    val playingColor = Brand.CulturalPurple // #8950B5 Playing translated voice
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         when {
             playing || turn.stage == Stage.Speaking -> {
-                Icon(Icons.AutoMirrored.Filled.VolumeUp, null, tint = accent, modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.VolumeUp, null, tint = playingColor, modifier = Modifier.size(16.dp))
                 Text(
                     if (turn.mine) "Playing translation to them" else "Playing translation",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = accent,
+                    color = playingColor,
                 )
-                Waveform(accent, Modifier.size(24.dp, 12.dp), bars = 4, active = true)
+                Waveform(playingColor, Modifier.size(24.dp, 12.dp), bars = 4, active = true)
             }
             turn.stage == Stage.Recognized || turn.stage == Stage.Translating -> {
                 CircularProgressIndicator(
                     Modifier.size(12.dp),
                     strokeWidth = 1.5.dp,
-                    color = accent,
+                    color = translatingColor,
                     trackColor = Brand.Borders,
                 )
-                Text("Translating…", style = MaterialTheme.typography.labelMedium, color = accent)
+                Text("Translating…", style = MaterialTheme.typography.labelMedium, color = translatingColor)
             }
             turn.stage == Stage.Failed -> {
                 Text(
@@ -864,8 +878,8 @@ private fun TurnStatus(turn: Turn, playing: Boolean, accent: Color, onRetry: (St
 
 @Composable
 fun ListeningBubble(mine: Boolean, label: String) {
-    val accent = if (mine) Brand.HighlightAccent else Brand.PrimaryAccent
-    val container = if (mine) Brand.SecondaryBg else Brand.CardBg
+    val accent = if (mine) Brand.SelectedBorder else Brand.PeacockGreen
+    val container = Brand.ElevatedSurface
     val t = rememberInfiniteTransition(label = "listeningPulse")
     val borderAlpha by t.animateFloat(
         initialValue = 0.35f,
@@ -883,7 +897,7 @@ fun ListeningBubble(mine: Boolean, label: String) {
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Waveform(accent, Modifier.size(28.dp, 18.dp), bars = 5, active = true)
+            Waveform(Color.Unspecified, Modifier.size(32.dp, 18.dp), bars = 6, active = true)
             Spacer(Modifier.width(10.dp))
             Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = accent)
         }

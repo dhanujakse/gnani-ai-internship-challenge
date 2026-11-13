@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Dark Emerald Glow Theme colors -->
-    <color name="obsidian_black">#FF06140E</color>
-    <color name="deep_forest">#FF0A281B</color>
-    <color name="launcher_bg">#FF000C0A</color>
+    <!-- Dark Indian Aurora Theme colors -->
+    <color name="obsidian_black">#FF071B20</color>
+    <color name="deep_forest">#FF0B292E</color>
+    <color name="launcher_bg">#FF071B20</color>
 
     <style name="Theme.Sarvagyan" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/obsidian_black</item>

@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedCard
@@ -240,21 +242,32 @@ private fun LanguagePickerField(
         Spacer(Modifier.height(4.dp))
         OutlinedCard(
             onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.outlinedCardColors(
+                containerColor = Brand.CardBg,
+            ),
+            border = BorderStroke(
+                width = if (selectedCode != null) 1.5.dp else 1.dp,
+                color = if (selectedCode != null) Brand.SelectedBorder else Brand.Borders,
+            ),
         ) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Language, null, tint = if (selectedCode != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(
+                    Icons.Filled.Language,
+                    null,
+                    tint = if (selectedCode != null) Brand.SelectedBorder else Brand.SecondaryText,
+                )
                 Spacer(Modifier.width(12.dp))
                 Text(
                     text = if (selectedLang != null) "${selectedLang.native} · ${selectedLang.name}" else "Select your language…",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (selectedCode != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (selectedCode != null) Brand.PrimaryText else Brand.SecondaryText,
                     modifier = Modifier.weight(1f)
                 )
-                Icon(Icons.Filled.ArrowDropDown, null)
+                Icon(Icons.Filled.ArrowDropDown, null, tint = Brand.SecondaryText)
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -286,9 +299,6 @@ fun AuthScreen(onSignedIn: (isNewAccount: Boolean) -> Unit) {
     var checkingUsername by remember { mutableStateOf(false) }
     var accountLanguage by remember { mutableStateOf<String?>(null) }
     var phone by remember { mutableStateOf("") }
-    var guestName by remember { mutableStateOf("") }
-    var guestPhone by remember { mutableStateOf("") }
-    var guestLanguage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showServer by remember { mutableStateOf(false) }
@@ -395,7 +405,7 @@ fun AuthScreen(onSignedIn: (isNewAccount: Boolean) -> Unit) {
             OutlinedTextField(
                 value = phone,
                 onValueChange = { phone = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
-                label = { Text("Phone number (optional, for contact discovery)") },
+                label = { Text("Phone number") },
                 placeholder = { Text("Type your number") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -435,39 +445,6 @@ fun AuthScreen(onSignedIn: (isNewAccount: Boolean) -> Unit) {
             enabled = canSubmit,
             loading = busy, modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(28.dp))
-        Text("Hackathon demo mode", style = MaterialTheme.typography.titleMedium)
-        Text("Try it without an account. Guest accounts are marked as demo users.", style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(guestName, { guestName = it }, label = { Text("Name shown to the other person") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-        LanguagePickerField(
-            title = "Which language do you speak?",
-            languages = supportedLanguages,
-            selectedCode = guestLanguage,
-            onSelect = { guestLanguage = it }
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = guestPhone,
-            onValueChange = { guestPhone = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
-            label = { Text("Phone number (optional, for contact discovery)") },
-            placeholder = { Text("Type your number") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(8.dp))
-        SecondaryButton("Continue as guest (demo)", {
-            val chosen = guestLanguage!!
-            val phoneHash = guestPhone.takeIf { it.isNotBlank() }?.let { normalizePhoneE164(it, "+91") }?.let { sha256Hex(it) }
-            run(true) {
-                val sess = c.api.demo(guestName.ifBlank { "Guest" }, language = chosen, phoneHash = phoneHash)
-                c.settingsStore.update { it.copy(myLanguage = chosen) }
-                sess
-            }
-        }, Modifier.fillMaxWidth(), enabled = !busy && guestLanguage != null)
         Spacer(Modifier.height(20.dp))
         TextButton(onClick = { showServer = !showServer }) { Text(if (showServer) "Hide server settings" else "Server settings") }
         if (showServer) {

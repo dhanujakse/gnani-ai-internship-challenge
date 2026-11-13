@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -118,13 +119,34 @@ fun LanguageScreen(onBack: () -> Unit) {
         Text("Showing only languages supported end to end (speech recognition, translation and voice).",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SectionTitle("I speak")
+        val accentColors = listOf(Brand.Saffron, Brand.HeritageRed, Brand.RoyalGold, Brand.PeacockGreen, Brand.RoyalBlue, Brand.CulturalPurple)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            langs.forEach { l ->
-                FilterChip(selected = s.myLanguage == l.code, onClick = {
-                    update { it.copy(myLanguage = l.code, voice = null) }
-                    scope.launch { runCatching { c.api.updateMe(language = l.code) } }
-                    active?.setLanguage(l.code, s.autoDetect) // changes language mid-call when a call is active
-                }, label = { Text("${l.native} · ${l.name}") })
+            langs.forEachIndexed { index, l ->
+                val isSelected = s.myLanguage == l.code
+                val langAccent = accentColors[index % accentColors.size]
+                FilterChip(
+                    selected = isSelected,
+                    onClick = {
+                        update { it.copy(myLanguage = l.code, voice = null) }
+                        scope.launch { runCatching { c.api.updateMe(language = l.code) } }
+                        active?.setLanguage(l.code, s.autoDetect) // changes language mid-call when a call is active
+                    },
+                    label = { Text("${l.native} · ${l.name}") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Brand.CardBg,
+                        selectedContainerColor = Brand.ElevatedSurface,
+                        labelColor = Brand.PrimaryText,
+                        selectedLabelColor = Brand.SelectedBorder,
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = isSelected,
+                        borderColor = langAccent.copy(alpha = 0.55f),
+                        selectedBorderColor = Brand.SelectedBorder,
+                        borderWidth = 1.dp,
+                        selectedBorderWidth = 2.dp,
+                    ),
+                )
             }
         }
         Spacer(Modifier.height(6.dp))
