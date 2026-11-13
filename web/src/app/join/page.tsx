@@ -325,8 +325,8 @@ function JoinCallContent() {
       {/* Top Navbar */}
       <header className="w-full max-w-7xl mx-auto px-6 lg:px-12 py-4 flex items-center justify-between border-b border-[#1E4D53]/30">
         <Link href="/" className="flex items-center gap-3">
-          <div className="relative w-9 h-9 rounded-xl overflow-hidden border border-[#00CBA0]/40">
-            <Image src="/logo.png" alt="Sarvagyan" fill className="object-cover" />
+          <div className="w-9 h-9 rounded-xl overflow-hidden border border-[#00CBA0]/40 shrink-0" style={{ width: 36, height: 36 }}>
+            <Image src="/logo.png" alt="Sarvagyan" width={36} height={36} className="w-full h-full object-cover" priority style={{ width: 36, height: 36, objectFit: "cover" }} />
           </div>
           <span className="font-bold tracking-tight text-lg text-[#F5F7F2]">Sarvagyan</span>
         </Link>
@@ -351,8 +351,8 @@ function JoinCallContent() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center max-w-5xl mx-auto w-full">
             {/* Left Column: Visual Call Intro */}
             <div className="lg:col-span-5 flex flex-col justify-center">
-              <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-[#00CBA0]/60 shadow-xl shadow-[#00CBA0]/20 mb-6">
-                <Image src="/logo.png" alt="Sarvagyan" fill className="object-cover" priority />
+              <div className="w-16 h-16 rounded-2xl overflow-hidden border border-[#00CBA0]/60 shadow-xl shadow-[#00CBA0]/20 mb-6 shrink-0" style={{ width: 64, height: 64 }}>
+                <Image src="/logo.png" alt="Sarvagyan" width={64} height={64} className="w-full h-full object-cover" priority style={{ width: 64, height: 64, objectFit: "cover" }} />
               </div>
               <h1 className="text-3xl font-extrabold text-[#F5F7F2] tracking-tight">
                 Join Translated Call

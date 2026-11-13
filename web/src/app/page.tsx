@@ -540,8 +540,8 @@ function SarvagyanAppContent() {
         {/* Top Header */}
         <header className="w-full max-w-7xl mx-auto px-6 py-6 flex items-center justify-between border-b border-[#1E4D53]/30">
           <div className="flex items-center gap-3">
-            <div className="relative w-11 h-11 rounded-2xl overflow-hidden shadow-lg shadow-[#00CBA0]/20 border border-[#00CBA0]/40">
-              <Image src="/logo.png" alt="Sarvagyan" fill className="object-cover" priority />
+            <div className="w-11 h-11 rounded-2xl overflow-hidden shadow-lg shadow-[#00CBA0]/20 border border-[#00CBA0]/40 shrink-0" style={{ width: 44, height: 44 }}>
+              <Image src="/logo.png" alt="Sarvagyan" width={44} height={44} className="w-full h-full object-cover" priority style={{ width: 44, height: 44, objectFit: "cover" }} />
             </div>
             <div>
               <span className="text-xl font-bold tracking-tight text-[#F5F7F2] block leading-none">
@@ -927,8 +927,8 @@ function SarvagyanAppContent() {
         <div>
           {/* Brand Header */}
           <div className="p-5 flex items-center gap-3 border-b border-[#1E4D53]/30">
-            <div className="relative w-10 h-10 rounded-2xl overflow-hidden border border-[#00CBA0]/40 shadow-lg shadow-[#00CBA0]/15">
-              <Image src="/logo.png" alt="Sarvagyan" fill className="object-cover" priority />
+            <div className="w-10 h-10 rounded-2xl overflow-hidden border border-[#00CBA0]/40 shadow-lg shadow-[#00CBA0]/15 shrink-0" style={{ width: 40, height: 40 }}>
+              <Image src="/logo.png" alt="Sarvagyan" width={40} height={40} className="w-full h-full object-cover" priority style={{ width: 40, height: 40, objectFit: "cover" }} />
             </div>
             <div>
               <span className="text-base font-bold tracking-tight text-[#F5F7F2] block leading-none">
