@@ -53,9 +53,11 @@ input:focus-visible {
   outline: none;
 }
 
-/* sign-in page background: drop the image at web/public/background.jpg.
-   The dark overlay keeps text readable; without the file the plain brand background shows. */
-.sg-landing {
+/* One background everywhere: the sign-in page (.sg-landing) and inside the app (.sg-app-bg: Home, Contacts,
+   Settings, Help, calls). Image: web/public/background.jpg. The overlay keeps text readable; without the file
+   the plain brand background shows. */
+.sg-landing,
+.sg-app-bg {
   background-color: var(--color-bg);
   background-image:
     linear-gradient(90deg, rgba(7, 27, 32, 0.78) 0%, rgba(7, 27, 32, 0.5) 50%, rgba(7, 27, 32, 0.3) 100%),
@@ -65,23 +67,9 @@ input:focus-visible {
   background-attachment: fixed;
 }
 @media (max-width: 1023px) {
-  .sg-landing {
-    background-image: linear-gradient(rgba(7, 27, 32, 0.7), rgba(7, 27, 32, 0.82)), url("/background.jpg");
-    background-attachment: scroll;
-  }
-}
-
-/* the same background inside the app (Home, Contacts, Settings, Help, calls): a darker overlay so lists stay readable */
-.sg-app-bg {
-  background-color: var(--color-bg);
-  background-image: linear-gradient(rgba(7, 27, 32, 0.84), rgba(7, 27, 32, 0.84)), url("/background.jpg");
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
-}
-@media (max-width: 1023px) {
+  .sg-landing,
   .sg-app-bg {
-    background-image: linear-gradient(rgba(7, 27, 32, 0.88), rgba(7, 27, 32, 0.88)), url("/background.jpg");
+    background-image: linear-gradient(rgba(7, 27, 32, 0.7), rgba(7, 27, 32, 0.82)), url("/background.jpg");
     background-attachment: scroll;
   }
 }

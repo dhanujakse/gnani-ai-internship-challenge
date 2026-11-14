@@ -206,7 +206,7 @@ export function Help() {
     <div className="max-w-3xl">
       <h1 className="mb-6 text-[26px] font-semibold text-ink">Help &amp; Manual</h1>
       {HELP.map(([title, body]) => (
-        <section key={title}>
+        <section key={title} className="mt-8 first:mt-0">
           <SectionTitle>{title}</SectionTitle>
           <p className="text-[16px] leading-7 text-sub">{body}</p>
         </section>
