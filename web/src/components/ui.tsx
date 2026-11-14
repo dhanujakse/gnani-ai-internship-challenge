@@ -337,25 +337,27 @@ const blobCache = new Map<string, string>();
 
 export function Avatar({ name, avatar, size = 40, ring }: { name: string; avatar?: string | null; size?: number; ring?: boolean }) {
   const [loaded, setLoaded] = useState<{ key: string; url: string } | null>(null);
+  const big = size > 64; // large previews use the 512 px image, lists the 128 px thumbnail
+  const key = avatar ? `${avatar}|${big ? "main" : "thumb"}` : "";
   // uploaded photos need the sign-in token, so they are fetched once and kept as blob: URLs
   useEffect(() => {
-    if (!avatar?.startsWith("custom:") || blobCache.has(avatar)) return;
+    if (!avatar?.startsWith("custom:") || blobCache.has(key)) return;
     let alive = true;
-    Api.avatarBlob(avatar.slice(7), true)
+    Api.avatarBlob(avatar.slice(7), !big)
       .then((b) => {
         const url = URL.createObjectURL(b);
-        blobCache.set(avatar, url);
-        if (alive) setLoaded({ key: avatar, url });
+        blobCache.set(key, url);
+        if (alive) setLoaded({ key, url });
       })
       .catch(() => undefined);
     return () => {
       alive = false;
     };
-  }, [avatar]);
+  }, [avatar, big, key]);
   const src = avatar?.startsWith("avatar-")
-    ? `/avatars/${avatar}-thumb.webp`
+    ? `/avatars/${avatar}${big ? "" : "-thumb"}.webp`
     : avatar?.startsWith("custom:")
-      ? (blobCache.get(avatar) ?? (loaded?.key === avatar ? loaded.url : null))
+      ? (blobCache.get(key) ?? (loaded?.key === key ? loaded.url : null))
       : null;
   const initial = (name.trim()[0] || "?").toUpperCase();
   return (

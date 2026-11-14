@@ -13,17 +13,23 @@ const STEPS: { icon: IconName; title: string; body: string }[] = [
 
 export function Landing({ languages, pendingCode, onSignedIn }: { languages: Language[]; pendingCode: string; onSignedIn: (s: Session, isNew: boolean) => void }) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-line/60">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+    <div className="sg-landing flex min-h-screen flex-col">
+      <header className="border-b border-line/60 bg-bg/40 backdrop-blur-sm">
+        <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <Brand />
           <a
             href="/Sarvagyan.apk"
             download
-            className="inline-flex h-10 items-center gap-2 rounded-md border border-line px-4 text-[14px] font-semibold text-ink transition-colors hover:bg-card"
+            aria-label="Download the Android app (APK) for the best experience"
+            className="group inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-accent to-highlight py-1.5 pl-1.5 pr-4 text-ink shadow-[0_6px_24px_-6px_rgba(0,203,160,0.55)] ring-1 ring-highlight/40 transition hover:-translate-y-px hover:shadow-[0_10px_30px_-6px_rgba(0,203,160,0.7)] sm:pr-5"
           >
-            <Icon name="download" size={18} className="text-highlight" />
-            Download APK
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-bg/25">
+              <Icon name="download" size={20} />
+            </span>
+            <span className="text-left leading-tight">
+              <span className="block text-[14px] font-bold">Download APK</span>
+              <span className="hidden text-[11px] font-medium text-ink/85 sm:block">Android app · best experience</span>
+            </span>
           </a>
         </div>
       </header>
@@ -32,10 +38,10 @@ export function Landing({ languages, pendingCode, onSignedIn }: { languages: Lan
       <main className="mx-auto grid w-full max-w-6xl flex-1 content-center gap-x-16 gap-y-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_440px] lg:py-16">
         <section className="lg:col-start-1 lg:row-start-1 lg:self-end">
           <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-highlight">Every Language. One Connection.</p>
-          <h1 className="mt-4 text-[40px] font-bold leading-[1.08] tracking-[-0.5px] text-ink sm:text-[52px]">
-            Speak Naturally.
+          <h1 className="mt-4 text-[38px] font-bold leading-[1.1] tracking-[-0.5px] text-ink sm:text-[50px]">
+            Speak in your language.
             <br />
-            Understand Everyone.
+            <span className="text-highlight">They understand instantly.</span>
           </h1>
           <p className="mt-5 max-w-xl text-[17px] leading-7 text-sub">
             Sarvagyan is voice calling for people who don&apos;t share a language. You speak yours, they hear theirs, and live subtitles
@@ -158,7 +164,7 @@ function AuthCard({ languages, pendingCode, onSignedIn }: { languages: Language[
   const usernameTone = checking ? "muted" : usernameStatus ? (usernameAvailable ? "ok" : "error") : "muted";
 
   return (
-    <section className="w-full rounded-lg border border-line bg-bg2 p-6 sm:p-8" aria-label="Sign in or create an account">
+    <section className="w-full rounded-lg border border-line bg-bg2/95 p-6 shadow-2xl shadow-black/30 backdrop-blur sm:p-8" aria-label="Sign in or create an account">
       <Logo size={56} />
       <h2 className="mt-4 text-[26px] font-semibold text-ink">Welcome to Sarvagyan</h2>
       <p className="mt-1 text-[15px] text-sub">{pendingCode ? `Sign in to join the call ${pendingCode}.` : "Sign in to start translated calls."}</p>

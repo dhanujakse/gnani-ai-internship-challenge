@@ -21,6 +21,7 @@ import { Home } from "@/components/Home";
 import { Landing } from "@/components/Landing";
 import { Help, Settings } from "@/components/Settings";
 import { Shell, type Tab } from "@/components/Shell";
+import { AvatarOnboarding } from "@/components/AvatarChooser";
 import { Avatar, Logo, PrimaryButton, TextButton, langLabel } from "@/components/ui";
 
 interface Incoming {
@@ -43,6 +44,7 @@ export default function Page() {
   const [incoming, setIncoming] = useState<Incoming | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [choosingAvatar, setChoosingAvatar] = useState(false); // right after "Create account", like the app
 
   // the server's language list, like the app's refreshLanguages()
   useEffect(() => {
@@ -176,7 +178,8 @@ export default function Page() {
       <Landing
         languages={languages}
         pendingCode={pendingCode}
-        onSignedIn={(s) => {
+        onSignedIn={(s, isNew) => {
+          setChoosingAvatar(isNew);
           saveSession(s);
           setTab("home");
         }}
@@ -185,6 +188,10 @@ export default function Page() {
   }
 
   const user = session.user;
+
+  if (choosingAvatar) {
+    return <AvatarOnboarding user={user} onUser={updateUser} onDone={() => setChoosingAvatar(false)} />;
+  }
 
   if (call) {
     return <CallScreen key={call.callId} call={call} me={user} language={user.language} languages={languages} onClose={() => {

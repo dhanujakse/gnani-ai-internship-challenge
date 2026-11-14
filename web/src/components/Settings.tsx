@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Api, ApiError, type Language, type User } from "@/lib/api";
 import { phoneHash } from "@/lib/phone";
+import { AvatarChooser } from "./AvatarChooser";
 import { AppCard, Avatar, ErrorBanner, Icon, LanguagePicker, PrimaryButton, SecondaryButton, SectionTitle, StatusChip, TextField } from "./ui";
 
-const BUILT_IN = Array.from({ length: 14 }, (_, i) => `avatar-${String(i + 1).padStart(2, "0")}`);
 
 /** The app's Settings, the parts that apply on the web: profile, language, diagnostics, sign out. */
 export function Settings({ user, languages, onUser, onSignOut }: { user: User; languages: Language[]; onUser: (u: User) => void; onSignOut: () => void }) {
@@ -48,9 +48,6 @@ function Profile({ user, onUser }: { user: User; onUser: (u: User) => void }) {
   const [phone, setPhone] = useState("");
   const [phoneMsg, setPhoneMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pickAvatar, setPickAvatar] = useState(false);
-  const [avatarMsg, setAvatarMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const file = useRef<HTMLInputElement>(null);
 
   const saveName = async () => {
     const n = name.trim();
@@ -76,32 +73,6 @@ function Profile({ user, onUser }: { user: User; onUser: (u: User) => void }) {
     }
   };
 
-  const chooseBuiltIn = async (id: string) => {
-    try {
-      onUser(await Api.updateMe({ avatar: id }));
-      setAvatarMsg(null);
-      setPickAvatar(false);
-    } catch (e) {
-      setAvatarMsg({ ok: false, text: e instanceof ApiError ? e.message : "Couldn't change your avatar." });
-    }
-  };
-
-  const upload = async (f: File | undefined) => {
-    if (!f) return;
-    if (f.size > 2 * 1024 * 1024) return setAvatarMsg({ ok: false, text: "Avatar photo is too large (max 2 MB)." });
-    setUploading(true);
-    try {
-      onUser(await Api.uploadAvatar(f));
-      setAvatarMsg({ ok: true, text: "Profile photo updated!" });
-      setPickAvatar(false);
-    } catch (e) {
-      setAvatarMsg({ ok: false, text: e instanceof ApiError ? e.message : "Could not upload photo." });
-    } finally {
-      setUploading(false);
-      if (file.current) file.current.value = "";
-    }
-  };
-
   return (
     <>
       <SectionTitle>Profile and username</SectionTitle>
@@ -117,35 +88,15 @@ function Profile({ user, onUser }: { user: User; onUser: (u: User) => void }) {
               </div>
             )}
           </div>
-          <SecondaryButton onClick={() => setPickAvatar((v) => !v)}>Change avatar</SecondaryButton>
+          <SecondaryButton onClick={() => setPickAvatar((v) => !v)}>{pickAvatar ? "Done" : "Change avatar"}</SecondaryButton>
         </div>
 
         {pickAvatar && (
           <div className="mt-5 border-t border-line/60 pt-5">
             <p className="mb-3 text-[15px] font-semibold text-ink">Choose your avatar</p>
-            <div className="grid grid-cols-5 gap-3 sm:grid-cols-7">
-              {BUILT_IN.map((id, i) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => chooseBuiltIn(id)}
-                  aria-label={`Avatar ${i + 1}`}
-                  className={`overflow-hidden rounded-full border-2 transition-colors ${user.avatar === id ? "border-highlight" : "border-transparent hover:border-line"}`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- small local webp thumbnails */}
-                  <img src={`/avatars/${id}-thumb.webp`} alt="" className="aspect-square w-full object-cover" />
-                </button>
-              ))}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <input ref={file} type="file" accept="image/*" className="hidden" onChange={(e) => upload(e.target.files?.[0])} />
-              <PrimaryButton loading={uploading} onClick={() => file.current?.click()} className="!min-h-[44px]">
-                Upload a photo
-              </PrimaryButton>
-            </div>
+            <AvatarChooser user={user} onUser={onUser} preview={false} />
           </div>
         )}
-        {avatarMsg && <p className={`mt-3 text-[13px] ${avatarMsg.ok ? "text-highlight" : "text-[#ff6b81]"}`}>{avatarMsg.text}</p>}
 
         <div className="mt-6 grid gap-4 border-t border-line/60 pt-5 sm:grid-cols-[1fr_auto] sm:items-start">
           <TextField label="Display name" value={name} onChange={setName} maxLength={60} supporting={nameMsg?.text} supportingTone={nameMsg ? (nameMsg.ok ? "ok" : "error") : "muted"} />
