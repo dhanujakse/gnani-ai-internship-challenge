@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -113,7 +114,7 @@ import ai.mack.sarvagyan.data.UserSearchResult
 import ai.mack.sarvagyan.data.formatDuration
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
-import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
+import ai.mack.sarvagyan.ui.components.PostLoginBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.LoadingView
@@ -171,11 +172,29 @@ fun GlobalChatScreen(
         }
     }
 
-    ScreenScaffold("Global Chat", onBack) {
-        TabRow(selectedTabIndex = topTab, containerColor = Brand.CardBg) {
-            Tab(topTab == 0, { topTab = 0 }, text = { Text("Chats") })
-            Tab(topTab == 1, { topTab = 1 }, text = { Text("Groups") })
+    ScreenScaffold(
+        title = "Global Chat",
+        onBack = onBack,
+        topBarContent = {
+            TabRow(
+                selectedTabIndex = topTab,
+                containerColor = Brand.CardBg,
+                contentColor = Brand.HighlightAccent,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Tab(
+                    selected = topTab == 0,
+                    onClick = { topTab = 0 },
+                    text = { Text("Chats", fontWeight = if (topTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                )
+                Tab(
+                    selected = topTab == 1,
+                    onClick = { topTab = 1 },
+                    text = { Text("Groups", fontWeight = if (topTab == 1) FontWeight.Bold else FontWeight.Normal) }
+                )
+            }
         }
+    ) {
         Spacer(Modifier.height(14.dp))
 
         when (topTab) {
@@ -907,9 +926,9 @@ fun ChatConversationScreen(
         else conv.peer?.username?.let { "@$it" } ?: ""
     } ?: ""
 
-    EmeraldAnimatedBackground {
+    PostLoginBackground {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp).imePadding().padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             // Header
             Row(

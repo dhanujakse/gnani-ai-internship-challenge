@@ -31,6 +31,7 @@ import ai.mack.sarvagyan.ui.screens.OnboardingScreen
 import ai.mack.sarvagyan.ui.screens.SettingsScreen
 import ai.mack.sarvagyan.ui.screens.PrivacyPolicyScreen
 import ai.mack.sarvagyan.ui.screens.SplashScreen
+import ai.mack.sarvagyan.ui.screens.StartCallHubScreen
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -40,6 +41,7 @@ object Routes {
     @Serializable data object Auth
     @Serializable data class ChooseAvatar(val onboarding: Boolean = false)
     @Serializable data object Home
+    @Serializable data object StartCallHub
     @Serializable data object Languages
     @Serializable data class CallSetup(val join: Boolean, val code: String? = null)
     @Serializable data object ActiveCall
@@ -135,7 +137,7 @@ private fun Screens(
                 }
             }
             HomeScreen(
-                onStartCall = { nav.navigate(Routes.CallSetup(join = false)) },
+                onStartCall = { nav.navigate(Routes.StartCallHub) },
                 onJoin = { code -> nav.navigate(Routes.CallSetup(join = true, code = code)) },
                 onLanguages = { nav.navigate(Routes.Languages) },
                 onSettings = { nav.navigate(Routes.Settings) },
@@ -145,6 +147,15 @@ private fun Screens(
                 onContacts = { nav.navigate(Routes.Contacts) },
                 onRecordVoicemail = { id, _ -> openChatWithUser(id) },
                 onSignedOut = { nav.navigate(Routes.Auth) { popUpTo(Routes.Home) { inclusive = true } } },
+            )
+        }
+        composable<Routes.StartCallHub> {
+            StartCallHubScreen(
+                onBack = { nav.popBackStack() },
+                onCallStarted = { nav.navigate(Routes.ActiveCall) },
+                onCreateRoom = { nav.navigate(Routes.CallSetup(join = false)) },
+                onJoinRoom = { code -> nav.navigate(Routes.CallSetup(join = true, code = code)) },
+                onVoicemail = { id, _ -> openChatWithUser(id) },
             )
         }
         composable<Routes.Languages> { LanguageScreen(onBack = { nav.popBackStack() }) }

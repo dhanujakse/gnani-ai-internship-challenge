@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -90,6 +91,7 @@ import ai.mack.sarvagyan.data.ContactUser
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
 import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
+import ai.mack.sarvagyan.ui.components.PostLoginBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.SectionTitle
@@ -175,7 +177,7 @@ internal fun sha256Hex(s: String): String {
     return bytes.joinToString("") { "%02x".format(it) }
 }
 
-private fun readDeviceContacts(context: Context): ContactSyncStats {
+internal fun readDeviceContacts(context: Context): ContactSyncStats {
     val result = mutableListOf<DevicePhoneContact>()
     val seenHashes = mutableSetOf<String>()
     val seenContactIds = mutableSetOf<String>()
@@ -236,7 +238,34 @@ private fun readDeviceContacts(context: Context): ContactSyncStats {
     )
 }
 
-private fun shareInvite(context: Context, contactName: String) {
+internal suspend fun syncDeviceContactsWithServer(
+    context: Context,
+    api: ai.mack.sarvagyan.data.ApiClient,
+    onProgress: (String) -> Unit = {}
+): Pair<ContactSyncStats, List<MatchedContact>> {
+    onProgress("Reading contacts…")
+    val stats = readDeviceContacts(context)
+    val list = stats.contacts
+    val allMatches = mutableListOf<MatchedContact>()
+    if (list.isNotEmpty()) {
+        val chunks = list.chunked(100)
+        var processed = 0
+        chunks.forEach { chunk ->
+            val hashes = chunk.map { it.hash }
+            val res = api.matchPhones(hashes)
+            allMatches.addAll(res.matches)
+            processed += chunk.size
+            onProgress("Synced $processed of ${list.size}")
+        }
+        android.util.Log.i(
+            "ContactSync",
+            "Sync completed. Contacts read: ${stats.contactsRead}, Numbers after normalization: ${stats.normalizedNumbers}, Unique numbers: ${stats.uniqueNumbers}, Matched: ${allMatches.size}, Failed: ${stats.failedNumbers}"
+        )
+    }
+    return stats to allMatches
+}
+
+internal fun shareInvite(context: Context, contactName: String) {
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, "Join me on Sarvagyan for real-time multilingual voice translation! Web App: https://gnani-ai-internship-challenge.vercel.app")
@@ -319,33 +348,11 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     fun syncPhone() {
         if (!hasContactPermission) return
         syncingContacts = true
-        syncProgress = "Reading contacts…"
         scope.launch {
             try {
-                val stats = readDeviceContacts(context)
-                val list = stats.contacts
-                phoneContacts = list
-                if (list.isNotEmpty()) {
-                    val allMatches = mutableListOf<MatchedContact>()
-                    val chunks = list.chunked(100)
-                    var processed = 0
-                    chunks.forEach { chunk ->
-                        val hashes = chunk.map { it.hash }
-                        val res = c.api.matchPhones(hashes)
-                        allMatches.addAll(res.matches)
-                        processed += chunk.size
-                        syncProgress = "Synced $processed of ${list.size}"
-                    }
-                    matchedUsers = allMatches
-                    val matchedCount = allMatches.size
-                    android.util.Log.i(
-                        "ContactSync",
-                        "Sync completed. Contacts read: ${stats.contactsRead}, Numbers after normalization: ${stats.normalizedNumbers}, Unique numbers: ${stats.uniqueNumbers}, Matched: $matchedCount, Failed: ${stats.failedNumbers}"
-                    )
-                } else {
-                    matchedUsers = emptyList()
-                    android.util.Log.i("ContactSync", "No device contacts available to match.")
-                }
+                val (stats, matches) = syncDeviceContactsWithServer(context, c.api) { syncProgress = it }
+                phoneContacts = stats.contacts
+                matchedUsers = matches
             } catch (e: Exception) {
                 error = (e as? ApiException)?.message ?: e.message
             } finally {
@@ -463,8 +470,8 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
         }
     }
 
-    EmeraldAnimatedBackground {
-        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+    PostLoginBackground {
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Brand.HighlightAccent) }
                 Text("Contacts", style = MaterialTheme.typography.titleLarge, color = Brand.PrimaryText)

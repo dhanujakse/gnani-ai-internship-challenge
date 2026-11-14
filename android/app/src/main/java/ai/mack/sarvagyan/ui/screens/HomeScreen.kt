@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -59,6 +60,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ai.mack.sarvagyan.call.CallStatus
 import ai.mack.sarvagyan.container
@@ -70,7 +72,7 @@ import ai.mack.sarvagyan.data.formatDuration
 import ai.mack.sarvagyan.data.normaliseCode
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
-import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
+import ai.mack.sarvagyan.ui.components.PostLoginBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.LanguagePill
@@ -85,11 +87,12 @@ import java.util.Date
 
 @Composable
 fun HomeScreen(
-    onStartCall: () -> Unit, onJoin: (String) -> Unit, onLanguages: () -> Unit, onSettings: () -> Unit,
+    onStartCall: () -> Unit, onJoin: (String) -> Unit = {}, onLanguages: () -> Unit, onSettings: () -> Unit,
     onHelp: () -> Unit, onResumeCall: () -> Unit, onSignedOut: () -> Unit,
     onVoicemail: () -> Unit, onRecordVoicemail: (String, String) -> Unit, onContacts: () -> Unit,
 ) {
-    val c = LocalContext.current.container
+    val context = LocalContext.current
+    val c = context.container
     val scope = rememberCoroutineScope()
     val user by c.user.collectAsStateWithLifecycle()
     val settings by c.settings.collectAsStateWithLifecycle()
@@ -209,8 +212,8 @@ fun HomeScreen(
             }
         }
     ) {
-        EmeraldAnimatedBackground {
-            Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
+        PostLoginBackground {
+            Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
                 // Header: Profile Avatar & Details (Click opens drawer)
                 Row(
                     Modifier.fillMaxWidth().clickable { scope.launch { drawerState.open() } },
@@ -247,36 +250,36 @@ fun HomeScreen(
             Spacer(Modifier.height(12.dp))
         }
 
-        // the most prominent action
-            Surface(
-                onClick = onStartCall, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().height(112.dp),
-                color = Brand.PrimaryAccent,
+        // Primary Action 1: Start Call (Unified calling workflow)
+        Surface(
+            onClick = onStartCall, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().height(112.dp),
+            color = Brand.PrimaryAccent,
+        ) {
+            Row(
+                Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Brand.PrimaryAccent, Brand.HighlightAccent))).padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Brand.PrimaryAccent, Brand.HighlightAccent))).padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Filled.Call, contentDescription = null, tint = Brand.ButtonContent, modifier = Modifier.size(36.dp))
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Start a call", style = MaterialTheme.typography.headlineSmall, color = Brand.ButtonContent, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                        Text("Get an invitation code to share", color = Brand.ButtonContent.copy(alpha = 0.85f))
-                    }
+                Icon(Icons.Filled.Call, contentDescription = null, tint = Brand.ButtonContent, modifier = Modifier.size(36.dp))
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Start a call", style = MaterialTheme.typography.headlineSmall, color = Brand.ButtonContent, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("Direct member call or create / join a room", color = Brand.ButtonContent.copy(alpha = 0.85f))
                 }
             }
+        }
         Spacer(Modifier.height(12.dp))
 
-        AppCard {
-            Text("Join with an invitation code", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
+        // Primary Action 2: Create Global Chat
+        AppCard(Modifier.clickable(role = Role.Button, onClick = onVoicemail)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    code, { code = normaliseCode(it).take(6) }, placeholder = { Text("ABC234") }, singleLine = true, modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(onGo = { if (code.length == 6) onJoin(code) }),
-                )
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = { onJoin(code) }, enabled = code.length == 6) { Text("Join") }
+                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Create Global Chat", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    Text("Chats, groups and voice messages in any language", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (unread > 0) StatusChip("$unread new", LocalCallColors.current.success)
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -296,32 +299,6 @@ fun HomeScreen(
                     if (settings.autoDetect) Text("Auto-detect secondary check on", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                 }
                 Text("Change", color = MaterialTheme.colorScheme.primary)
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        AppCard(Modifier.clickable(role = Role.Button, onClick = onContacts)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.People, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Contacts", style = MaterialTheme.typography.titleMedium)
-                    Text("Call people directly: their phone rings", style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        AppCard(Modifier.clickable(role = Role.Button, onClick = onVoicemail)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Global Chat", style = MaterialTheme.typography.titleMedium)
-                    Text("Chats, groups and voice messages in any language", style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (unread > 0) StatusChip("$unread new", LocalCallColors.current.success)
             }
         }
 

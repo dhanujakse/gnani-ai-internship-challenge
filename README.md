@@ -16,7 +16,7 @@ each speaks their own language and hears the other in theirs, with live subtitle
 ![Tests](https://img.shields.io/badge/server%20tests-134%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-Built for the **Gnani AI Internship Challenge** by **Siva Sanjay** (AI & ML) and **Dhanuja** (Software).
+Built for the **Gnani AI Internship Challenge** by **Siva Sanjay** and **Dhanuja**.
 
 </div>
 
@@ -499,10 +499,8 @@ Sarvagyan is a working prototype built for a challenge. Being honest about where
 
 ## Team
 
-| | Role |
-|---|---|
-| **Siva Sanjay** | AI & ML Developer |
-| **Dhanuja** | Software Developer |
+- **Siva Sanjay**
+- **Dhanuja**
 
 Speech recognition and voices by [Gnani.ai](https://gnani.ai).
 
