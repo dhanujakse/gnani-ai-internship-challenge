@@ -1,5 +1,10 @@
 package ai.mack.sarvagyan.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -125,6 +130,26 @@ fun HomeScreen(
         }
     }
     LaunchedEffect(Unit) { load() }
+
+    // Request notification permission once the user is inside their account on the Home screen
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) c.syncPushToken()
+    }
+    LaunchedEffect(user) {
+        if (user != null) {
+            if (Build.VERSION.SDK_INT >= 33) {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    c.syncPushToken()
+                }
+            } else {
+                c.syncPushToken()
+            }
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,

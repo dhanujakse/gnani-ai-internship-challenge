@@ -1,9 +1,6 @@
 package ai.mack.sarvagyan
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.WindowManager
@@ -12,10 +9,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import ai.mack.sarvagyan.ui.screens.LockScreen
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.SystemBarStyle
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,7 +20,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
@@ -67,24 +61,6 @@ class MainActivity : FragmentActivity() { // FragmentActivity: needed by the fin
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             }
             LaunchedEffect(locked.value) { if (locked.value) unlock() }
-
-            // Ask for Notification permission on app entry (Android 13+ / API 33+)
-            val notificationPermissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestPermission()
-            ) { isGranted ->
-                if (isGranted) container.syncPushToken()
-            }
-            LaunchedEffect(Unit) {
-                if (Build.VERSION.SDK_INT >= 33) {
-                    if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    } else {
-                        container.syncPushToken()
-                    }
-                } else {
-                    container.syncPushToken()
-                }
-            }
 
             SarvagyanTheme(mode = settings.theme) {
                 // Surface provides the theme's content colour, so every Text defaults to readable colours
