@@ -62,11 +62,16 @@ fun AppNav(
     onJoinCodeConsumed: () -> Unit,
     pendingConversationId: String? = null,
     onConversationConsumed: () -> Unit = {},
+    pendingReturnToCall: Boolean = false,
+    onReturnToCallConsumed: () -> Unit = {},
 ) {
     val container = LocalContext.current.container
     val incoming by container.incomingCall.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
-        Screens(nav, pendingJoinCode, onJoinCodeConsumed, pendingConversationId, onConversationConsumed)
+        Screens(
+            nav, pendingJoinCode, onJoinCodeConsumed, pendingConversationId, onConversationConsumed,
+            pendingReturnToCall, onReturnToCallConsumed,
+        )
         // someone is calling: the ringing screen covers whatever is open
         incoming?.let { call ->
             IncomingCallScreen(call, onAnswered = {
@@ -84,10 +89,19 @@ private fun Screens(
     onJoinCodeConsumed: () -> Unit,
     pendingConversationId: String?,
     onConversationConsumed: () -> Unit,
+    pendingReturnToCall: Boolean,
+    onReturnToCallConsumed: () -> Unit,
 ) {
     val context = LocalContext.current
     val c = context.container
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(pendingReturnToCall) {
+        if (pendingReturnToCall && c.activeCall.value != null) {
+            nav.navigate(Routes.ActiveCall) { launchSingleTop = true }
+            onReturnToCallConsumed()
+        }
+    }
     fun openChatWithUser(userId: String, voicemail: Boolean = false) {
         scope.launch {
             try {
@@ -185,7 +199,7 @@ private fun Screens(
         composable<Routes.Summary> { entry ->
             CallSummaryScreen(
                 callId = entry.toRoute<Routes.Summary>().callId,
-                onNewCall = { nav.navigate(Routes.CallSetup(join = false)) { popUpTo(Routes.Home) } },
+                onNewCall = { nav.navigate(Routes.StartCallHub) { popUpTo(Routes.Home) } },
                 onHome = { nav.popBackStack(Routes.Home, inclusive = false) },
             )
         }

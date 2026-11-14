@@ -42,21 +42,28 @@ class CallService : LifecycleService() {
     private fun notification(): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Active call", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shown while a Sarvagyan call is using the microphone"
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Active call", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Shown while a Sarvagyan call is active"
             })
         }
+        val returnIntent = Intent(this, MainActivity::class.java).apply {
+            action = "ai.mack.sarvagyan.RETURN_TO_CALL"
+            putExtra("return_to_call", true)
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_IMMUTABLE,
+            this, 0, returnIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_call)
-            .setContentTitle("Sarvagyan call in progress")
-            .setContentText("Microphone on · live translation active")
+            .setContentTitle("Sarvagyan Call in Progress")
+            .setContentText("Call is active · Tap to return to call")
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setContentIntent(open)
+            .addAction(R.drawable.ic_stat_call, "Return to call", open)
             .build()
     }
 

@@ -50,7 +50,6 @@ import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -637,7 +636,6 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
                         else -> items(list, key = { "contact_${it.id}" }) { p ->
                             PersonRow(p, c.language(p.language)?.name ?: p.language,
                                 onCall = { placeCall(p.id, p.name) },
-                                onVoicemail = { onVoicemail(p.id, p.name) },
                                 menu = listOf(
                                     "Remove from contacts" to { scope.launch { runCatching { c.api.removeContact(p.id) }; load() } },
                                     "Block" to { scope.launch { runCatching { c.api.block(p.id) }; load() } },
@@ -810,7 +808,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
 }
 
 @Composable
-private fun PersonRow(p: ContactUser, language: String, onCall: () -> Unit, onVoicemail: () -> Unit, menu: List<Pair<String, () -> Unit>>) {
+private fun PersonRow(p: ContactUser, language: String, onCall: () -> Unit, menu: List<Pair<String, () -> Unit>>) {
     var open by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Avatar(p.name, LocalCallColors.current.peer, 40.dp, avatar = p.avatar, useMain = false)
@@ -820,7 +818,6 @@ private fun PersonRow(p: ContactUser, language: String, onCall: () -> Unit, onVo
             Text(listOfNotNull(p.username?.let { "@$it" }, language).joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        IconButton(onClick = onVoicemail) { Icon(Icons.Filled.Voicemail, "Leave ${p.name} a voicemail") }
         IconButton(onClick = onCall) { Icon(Icons.Filled.Call, "Call ${p.name}") }
         Box {
             IconButton(onClick = { open = true }) { Icon(Icons.Filled.MoreVert, "More options for ${p.name}") }

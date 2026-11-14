@@ -38,7 +38,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -136,6 +136,7 @@ fun StartCallHubScreen(
     var searchingUsers by remember { mutableStateOf(false) }
     var searchAttempted by remember { mutableStateOf(false) }
     var addingContact by remember { mutableStateOf(false) }
+    var isUsernameFocused by remember { mutableStateOf(false) }
     val usernameFocus = remember { FocusRequester() }
 
     // Contact list state
@@ -405,7 +406,7 @@ fun StartCallHubScreen(
                                 value = dialNumber,
                                 onValueChange = { dialNumber = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
                                 label = { Text("Call by phone number") },
-                                placeholder = { Text("e.g. +91 9876543210") },
+                                placeholder = { Text("Type phone number") },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Go),
@@ -498,7 +499,10 @@ fun StartCallHubScreen(
                                     label = { Text("Find & Add by @username") },
                                     placeholder = { Text("Type username...") },
                                     singleLine = true,
-                                    modifier = Modifier.weight(1f).focusRequester(usernameFocus),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .focusRequester(usernameFocus)
+                                        .onFocusChanged { isUsernameFocused = it.isFocused },
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                     keyboardActions = KeyboardActions(onSearch = {
                                         val clean = usernameQuery.trim().removePrefix("@").trim()
@@ -516,26 +520,22 @@ fun StartCallHubScreen(
                                     ),
                                 )
                                 Spacer(Modifier.width(8.dp))
+                                val isPlusEnabled = !isUsernameFocused
                                 IconButton(
                                     onClick = {
-                                        val clean = usernameQuery.trim().removePrefix("@").trim()
-                                        if (clean.isNotEmpty()) addPerson(targetUsername = clean)
+                                        usernameFocus.requestFocus()
                                     },
-                                    enabled = usernameQuery.isNotBlank() && !addingContact,
+                                    enabled = isPlusEnabled,
                                     modifier = Modifier
                                         .size(48.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(if (usernameQuery.isNotBlank()) Brand.HighlightAccent else Brand.CardBg.copy(alpha = 0.65f)),
+                                        .background(if (isPlusEnabled) Brand.HighlightAccent else Brand.CardBg.copy(alpha = 0.45f)),
                                 ) {
-                                    if (addingContact) {
-                                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFF071B20))
-                                    } else {
-                                        Icon(
-                                            Icons.Filled.PersonAdd,
-                                            contentDescription = "Add contact",
-                                            tint = if (usernameQuery.isNotBlank()) Color(0xFF071B20) else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    Icon(
+                                        Icons.Filled.PersonAdd,
+                                        contentDescription = "Add contact",
+                                        tint = if (isPlusEnabled) Color(0xFF071B20) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                                    )
                                 }
                             }
                         }
@@ -610,7 +610,6 @@ fun StartCallHubScreen(
                                         avatar = contact.avatar,
                                         language = c.language(contact.language)?.name ?: contact.language,
                                         onTapCall = { placeCall(contact.id, contact.name) },
-                                        onVoicemail = { onVoicemail(contact.id, contact.name) },
                                         menu = listOf(
                                             "Remove from contacts" to { scope.launch { runCatching { c.api.removeContact(contact.id) }; loadContacts() } },
                                             "Block" to { scope.launch { runCatching { c.api.block(contact.id) }; loadContacts() } },
@@ -748,7 +747,6 @@ fun StartCallHubScreen(
                                             language = c.language(m.language)?.name ?: m.language,
                                             subtitle = num,
                                             onTapCall = { placeCall(m.id, m.name) },
-                                            onVoicemail = { onVoicemail(m.id, m.name) },
                                         )
                                     }
                                 }
@@ -929,7 +927,6 @@ private fun ContactItemRow(
     language: String?,
     subtitle: String? = null,
     onTapCall: () -> Unit,
-    onVoicemail: () -> Unit,
     menu: List<Pair<String, () -> Unit>> = emptyList(),
 ) {
     var showMenu by remember { mutableStateOf(false) }

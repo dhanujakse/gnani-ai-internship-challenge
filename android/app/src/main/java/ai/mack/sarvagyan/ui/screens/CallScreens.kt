@@ -41,7 +41,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
@@ -59,6 +58,7 @@ import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SubtitlesOff
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.AlertDialog
@@ -399,7 +399,6 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
                     title = st.unanswered!!,
                     detail = st.unansweredDetail ?: "",
                     name = call.info.peerName ?: "them",
-                    onVoicemail = call.info.peerId?.let { id -> { c.activeCall.value = null; onVoicemail(id, call.info.peerName ?: "") } },
                     onClose = { c.activeCall.value = null; onLeaveScreen() },
                 )
             } else if (call.info.ringing && (st.status == CallStatus.WaitingForPeer || st.status == CallStatus.Connecting)) {
@@ -732,7 +731,7 @@ fun CallSummaryScreen(callId: String, onNewCall: () -> Unit, onHome: () -> Unit)
             }
         }
         Spacer(Modifier.height(24.dp))
-        PrimaryButton("Start another call", onNewCall, Modifier.fillMaxWidth())
+        PrimaryButton("Create a call", onNewCall, Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         SecondaryButton("Back to home", onHome, Modifier.fillMaxWidth())
         Spacer(Modifier.height(24.dp))
@@ -749,27 +748,23 @@ private fun RingingCard(name: String, reachable: Boolean) {
         StatusChip(if (reachable) "Ringing" else "Their phone is offline", LocalCallColors.current.warning, pulsing = true)
         if (!reachable) {
             Spacer(Modifier.height(8.dp))
-            Text("Sarvagyan isn't open on their phone right now. If they don't answer, you can leave a voicemail.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            Text("Sarvagyan isn't open on their phone right now. Waiting for them to connect…",
+                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
         }
     }
 }
 
 @Composable
-private fun UnansweredCard(title: String, detail: String, name: String, onVoicemail: (() -> Unit)?, onClose: () -> Unit) {
+private fun UnansweredCard(title: String, detail: String, name: String, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Avatar(name, LocalCallColors.current.peer, 96.dp)
         Spacer(Modifier.height(16.dp))
         Text(title, style = MaterialTheme.typography.headlineMedium, color = LocalCallColors.current.endCall)
         if (detail.isNotBlank() && detail != title) {
             Spacer(Modifier.height(6.dp))
-            Text(detail, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(detail, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
         Spacer(Modifier.height(24.dp))
-        if (onVoicemail != null) {
-            PrimaryButton("Leave a voice message", onVoicemail, Modifier.fillMaxWidth(), icon = Icons.Filled.Voicemail)
-            Spacer(Modifier.height(8.dp))
-        }
-        SecondaryButton("Close", onClose, Modifier.fillMaxWidth())
+        PrimaryButton("Close", onClose, Modifier.fillMaxWidth())
     }
 }

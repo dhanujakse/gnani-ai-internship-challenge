@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -311,7 +310,7 @@ fun HomeScreen(
             favourites.forEach { f ->
                 ContactRow(f.name, c.language(f.language)?.name ?: f.language, f.isDemo, avatar = f.avatar, starred = true,
                     onStar = { scope.launch { runCatching { c.api.setFavourite(f.id, false) }; load() } },
-                    onCall = { placeCall(f.id, f.name) }, onVoicemail = { onRecordVoicemail(f.id, f.name) })
+                    onCall = { placeCall(f.id, f.name) })
             }
         }
 
@@ -321,7 +320,7 @@ fun HomeScreen(
             history!!.isEmpty() -> EmptyState(Icons.Filled.History, "No calls yet", "Your translated calls will appear here.")
             else -> history!!.take(15).forEach { h -> HistoryRow(h, onStar = { on ->
                 h.peer?.let { p -> scope.launch { runCatching { c.api.setFavourite(p.id, on) }; load() } }
-            }, onVoicemail = { p -> onRecordVoicemail(p.id, p.name ?: "") }) }
+            }, onCall = { id, name -> placeCall(id, name) }) }
         }
             Spacer(Modifier.height(24.dp))
         }
@@ -331,7 +330,7 @@ fun HomeScreen(
 
 @Composable
 private fun ContactRow(
-    name: String, language: String, demo: Boolean, avatar: String?, starred: Boolean, onStar: () -> Unit, onCall: () -> Unit, onVoicemail: () -> Unit,
+    name: String, language: String, demo: Boolean, avatar: String?, starred: Boolean, onStar: () -> Unit, onCall: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Avatar(name, LocalCallColors.current.peer, 40.dp, avatar = avatar, useMain = false)
@@ -341,17 +340,16 @@ private fun ContactRow(
             Text(language + if (demo) " · demo account" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(onClick = onStar) { Icon(if (starred) Icons.Filled.Star else Icons.Filled.StarBorder, contentDescription = if (starred) "Remove favourite" else "Add favourite") }
-        IconButton(onClick = onVoicemail) { Icon(Icons.Filled.Voicemail, contentDescription = "Leave $name a voicemail") }
-        IconButton(onClick = onCall) { Icon(Icons.Filled.Call, contentDescription = "Start a call and invite $name") }
+        IconButton(onClick = onCall) { Icon(Icons.Filled.Call, contentDescription = "Start a call and invite $name", tint = Brand.HighlightAccent) }
     }
 }
 
 @Composable
-private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (Peer) -> Unit) {
+private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onCall: (String, String) -> Unit) {
     val peer = h.peer
     val isMissed = h.status == "missed" || h.outcome in listOf("missed", "no_answer", "cancelled")
-    val rowMod = if (isMissed && h.hasVoicemail && peer != null) {
-        Modifier.fillMaxWidth().clickable { onVoicemail(peer) }.padding(vertical = 6.dp)
+    val rowMod = if (peer != null) {
+        Modifier.fillMaxWidth().clickable { onCall(peer.id, peer.name ?: "Friend") }.padding(vertical = 6.dp)
     } else {
         Modifier.fillMaxWidth().padding(vertical = 6.dp)
     }
@@ -368,7 +366,6 @@ private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (P
             }
             val meta = buildList {
                 if (outcomeLabel != null) add(outcomeLabel)
-                if (isMissed && h.hasVoicemail) add("Voicemail")
                 add(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date((h.createdAt * 1000).toLong())))
                 h.durationS?.let { add(formatDuration(it.toLong())) }
                 if (h.utterances > 0) add("${h.utterances} translated")
@@ -380,11 +377,11 @@ private fun HistoryRow(h: CallRecord, onStar: (Boolean) -> Unit, onVoicemail: (P
                 color = if (isMissed) LocalCallColors.current.endCall else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (peer != null) IconButton(onClick = { onVoicemail(peer) }) {
+        if (peer != null) IconButton(onClick = { onCall(peer.id, peer.name ?: "Friend") }) {
             Icon(
-                Icons.Filled.Voicemail,
-                contentDescription = if (h.hasVoicemail) "Open ${peer.name ?: "their"} voicemail in chat" else "Leave ${peer.name ?: "them"} a voicemail",
-                tint = if (h.hasVoicemail) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                Icons.Filled.Call,
+                contentDescription = "Call ${peer.name ?: "them"}",
+                tint = Brand.HighlightAccent,
             )
         }
         if (peer != null) IconButton(onClick = { onStar(!peer.favourite) }) {
