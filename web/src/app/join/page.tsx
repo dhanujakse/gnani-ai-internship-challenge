@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 
 const SERVER_URL = "https://sarvagyan-server.onrender.com";
 const WS_URL = "wss://sarvagyan-server.onrender.com";
+const APK_DOWNLOAD_URL = "/Sarvagyan.apk";
 
 const LANGUAGES = [
   { code: "ta-IN", native: "தமிழ்", name: "Tamil" },
@@ -335,11 +336,15 @@ function JoinCallContent() {
             {status === "connected" ? `ROOM #${code}` : "WEB COMPANION"}
           </span>
           <a
-            href="/Sarvagyan.apk"
-            download
-            className="hidden sm:inline-flex text-xs px-3 py-1 rounded-full bg-[#0B292E] text-[#A9BFBA] hover:text-[#00CBA0] border border-[#1E4D53] transition-colors"
+            href={APK_DOWNLOAD_URL}
+            download="Sarvagyan.apk"
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold text-[#071B20] bg-gradient-to-r from-[#00CBA0] to-[#E3A857] hover:brightness-110 border border-[#00CBA0]/40 transition-all shadow-md shadow-[#00CBA0]/20"
           >
-            Get Android App
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span className="hidden sm:inline">Download APK for a better experience</span>
+            <span className="inline sm:hidden">Download APK</span>
           </a>
         </div>
       </header>
