@@ -85,3 +85,30 @@ def test_diagnostics_checks_the_real_translator(env) -> None:
     t, _ = env.guest("Diag")
     out = env.client.get("/v1/diagnostics", headers=env.auth(t)).json()
     assert out["translation"]["ok"] is True  # FakeTranslator returns "[ta-IN] hello"
+
+
+def test_translated_voice_reports_translation_failure_as_503(env) -> None:
+    ta, _ = env.guest("Alice")
+    tb, b = env.guest("Bob")
+    env.client.patch("/v1/me", json={"language": "ta-IN"}, headers=env.auth(ta))
+    env.client.patch("/v1/me", json={"language": "en-IN"}, headers=env.auth(tb))
+    cid = env.client.post("/v1/chat/direct", json={"user_id": b["id"]}, headers=env.auth(ta)).json()["conversation"]["id"]
+    head = "SAY:ta-IN:நாளை சந்திக்கலாம்".encode("utf-8")
+    mid = env.client.post(f"/v1/chat/conversations/{cid}/voice?language=ta-IN", content=head + b" " * (32000 - len(head)),
+                          headers=env.auth(ta)).json()["message"]["id"]  # fmt: skip
+    import time as _time
+    for _ in range(40):  # wait for the transcript as the sender (same language: nothing to translate)
+        msgs = env.client.get(f"/v1/chat/conversations/{cid}/messages", headers=env.auth(ta)).json()["messages"]
+        if msgs[0]["original_text"] != "[Voice Message]":
+            break
+        _time.sleep(0.05)
+    env.tr.fail = True
+    r = env.client.get(f"/v1/chat/messages/{mid}/translated-audio", headers=env.auth(tb))
+    assert r.status_code == 503 and "original" in r.json()["detail"]
+
+
+def test_diagnostics_report_a_failing_translator(env) -> None:
+    t, _ = env.guest("Diag2")
+    env.tr.fail = True
+    out = env.client.get("/v1/diagnostics", headers=env.auth(t)).json()
+    assert out["translation"]["ok"] is False and out["translation"]["code"] == "timeout"

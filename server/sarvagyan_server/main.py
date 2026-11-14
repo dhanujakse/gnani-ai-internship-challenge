@@ -834,14 +834,20 @@ def create_app(services: Services | None = None) -> FastAPI:
             out["speech_recognition"] = {"ok": True, "ms": int((time.monotonic() - t0) * 1000)}
         except Exception as exc:  # report, never raise
             out["speech_recognition"] = {"ok": False, "error": getattr(exc, "message", type(exc).__name__)}
-        # the real translator path (Google first, then MyMemory with the account email), one word, usually cached
+        # The real providers with a real sentence: the phrasebook and the cache are skipped, so a blocked provider shows.
+        probe, src, tgt = "Where are you right now?", "en-IN", "ta-IN"
+        one = getattr(s.translator, "_one", None)  # the MyMemory translator's uncached path (Google first, then MyMemory)
         t0 = time.monotonic()
         try:
-            res = await asyncio.wait_for(s.translator.translate("hello", "en-IN", "ta-IN"), 10)
-            out["translation"] = {"ok": bool(res.strip()) and res.strip().lower() != "hello",
-                                  "ms": int((time.monotonic() - t0) * 1000)}  # fmt: skip
+            res = await asyncio.wait_for((one or s.translator.translate)(probe, src, tgt), 15)
+            out["translation"] = {"ok": bool(res.strip()) and res.strip() != probe, "ms": int((time.monotonic() - t0) * 1000)}
         except Exception as exc:  # report, never raise
-            out["translation"] = {"ok": False, "error": getattr(exc, "message", type(exc).__name__)}
+            out["translation"] = {"ok": False, "error": getattr(exc, "message", type(exc).__name__),
+                                  "code": getattr(exc, "code", None)}  # fmt: skip
+        gtx = getattr(s.translator, "_fallback_gtx", None)
+        if gtx is not None:  # which free provider is refusing this server (they limit by IP address)
+            with contextlib.suppress(Exception):
+                out["translation"]["google"] = "ok" if await asyncio.wait_for(gtx(probe, src, tgt), 10) else "refused"
         return out
 
     # --- calls --------------------------------------------------------------------------
@@ -1420,7 +1426,11 @@ def create_app(services: Services | None = None) -> FastAPI:
             if cached:
                 text_to_speak = cached
             else:
-                text_to_speak = await s.translator.translate(orig, src_lang, target_lang)
+                try:
+                    text_to_speak = await s.translator.translate(orig, src_lang, target_lang)
+                except ProviderError as exc:
+                    log.warning("chat translated audio: translation failed msg=%s code=%s", mid[:8], exc.code)
+                    raise HTTPException(503, "Couldn't translate this voice message right now. Play the original instead.") from None
                 s.db.store_cached_translation(mid, target_lang, text_to_speak)
         from sarvagyan_server.languages import voice_for
         voice = voice_for(target_lang, None)

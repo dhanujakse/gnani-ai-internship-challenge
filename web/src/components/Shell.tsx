@@ -32,8 +32,8 @@ export function Shell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-dvh">
-      <aside className="sticky top-0 hidden h-dvh w-[280px] shrink-0 flex-col border-r border-line/60 bg-bg2 lg:flex">
+    <div className="sg-app-bg flex min-h-dvh">
+      <aside className="sticky top-0 hidden h-dvh w-[280px] shrink-0 flex-col border-r border-line/60 bg-bg2/85 backdrop-blur-md lg:flex">
         <div className="px-5 py-5">
           <Brand />
         </div>

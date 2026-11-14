@@ -115,7 +115,7 @@ export function CallScreen({
   const inviteLink = typeof window !== "undefined" ? `${window.location.origin}/join?code=${call.code}` : "";
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="sg-app-bg flex h-dvh flex-col">
       <header className="border-b border-line/60">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
           <span className="hidden sm:block">
@@ -395,6 +395,7 @@ function CallSummary({
 }) {
   const said = useMemo(() => turns.filter((t) => t.original && t.stage !== "listening"), [turns]);
   return (
+    <div className="sg-app-bg min-h-dvh">
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-4 py-10 sm:px-6">
       <Brand />
       <h1 className="mt-10 text-[26px] font-semibold text-ink">Call summary</h1>
@@ -428,6 +429,7 @@ function CallSummary({
       <PrimaryButton onClick={onClose} className="mt-8 w-full sm:w-auto">
         Back to home
       </PrimaryButton>
+    </div>
     </div>
   );
 }

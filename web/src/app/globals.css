@@ -71,6 +71,21 @@ input:focus-visible {
   }
 }
 
+/* the same background inside the app (Home, Contacts, Settings, Help, calls): a darker overlay so lists stay readable */
+.sg-app-bg {
+  background-color: var(--color-bg);
+  background-image: linear-gradient(rgba(7, 27, 32, 0.84), rgba(7, 27, 32, 0.84)), url("/background.jpg");
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+@media (max-width: 1023px) {
+  .sg-app-bg {
+    background-image: linear-gradient(rgba(7, 27, 32, 0.88), rgba(7, 27, 32, 0.88)), url("/background.jpg");
+    background-attachment: scroll;
+  }
+}
+
 /* a single, quiet "speaking" indicator (the app's waveform bubble), respecting reduced motion */
 @keyframes sg-bar {
   0%, 100% { transform: scaleY(0.35); }
