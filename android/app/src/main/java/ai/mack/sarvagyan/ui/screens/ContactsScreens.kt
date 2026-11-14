@@ -175,7 +175,7 @@ internal fun sha256Hex(s: String): String {
     return bytes.joinToString("") { "%02x".format(it) }
 }
 
-private fun readDeviceContacts(context: Context): ContactSyncStats {
+internal fun readDeviceContacts(context: Context): ContactSyncStats {
     val result = mutableListOf<DevicePhoneContact>()
     val seenHashes = mutableSetOf<String>()
     val seenContactIds = mutableSetOf<String>()
@@ -234,6 +234,33 @@ private fun readDeviceContacts(context: Context): ContactSyncStats {
         uniqueNumbers = result.size,
         contacts = result
     )
+}
+
+internal suspend fun syncDeviceContactsWithServer(
+    context: Context,
+    api: ai.mack.sarvagyan.data.ApiClient,
+    onProgress: (String) -> Unit = {}
+): Pair<ContactSyncStats, List<MatchedContact>> {
+    onProgress("Reading contacts…")
+    val stats = readDeviceContacts(context)
+    val list = stats.contacts
+    val allMatches = mutableListOf<MatchedContact>()
+    if (list.isNotEmpty()) {
+        val chunks = list.chunked(100)
+        var processed = 0
+        chunks.forEach { chunk ->
+            val hashes = chunk.map { it.hash }
+            val res = api.matchPhones(hashes)
+            allMatches.addAll(res.matches)
+            processed += chunk.size
+            onProgress("Synced $processed of ${list.size}")
+        }
+        android.util.Log.i(
+            "ContactSync",
+            "Sync completed. Contacts read: ${stats.contactsRead}, Numbers after normalization: ${stats.normalizedNumbers}, Unique numbers: ${stats.uniqueNumbers}, Matched: ${allMatches.size}, Failed: ${stats.failedNumbers}"
+        )
+    }
+    return stats to allMatches
 }
 
 private fun shareInvite(context: Context, contactName: String) {
@@ -319,33 +346,11 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
     fun syncPhone() {
         if (!hasContactPermission) return
         syncingContacts = true
-        syncProgress = "Reading contacts…"
         scope.launch {
             try {
-                val stats = readDeviceContacts(context)
-                val list = stats.contacts
-                phoneContacts = list
-                if (list.isNotEmpty()) {
-                    val allMatches = mutableListOf<MatchedContact>()
-                    val chunks = list.chunked(100)
-                    var processed = 0
-                    chunks.forEach { chunk ->
-                        val hashes = chunk.map { it.hash }
-                        val res = c.api.matchPhones(hashes)
-                        allMatches.addAll(res.matches)
-                        processed += chunk.size
-                        syncProgress = "Synced $processed of ${list.size}"
-                    }
-                    matchedUsers = allMatches
-                    val matchedCount = allMatches.size
-                    android.util.Log.i(
-                        "ContactSync",
-                        "Sync completed. Contacts read: ${stats.contactsRead}, Numbers after normalization: ${stats.normalizedNumbers}, Unique numbers: ${stats.uniqueNumbers}, Matched: $matchedCount, Failed: ${stats.failedNumbers}"
-                    )
-                } else {
-                    matchedUsers = emptyList()
-                    android.util.Log.i("ContactSync", "No device contacts available to match.")
-                }
+                val (stats, matches) = syncDeviceContactsWithServer(context, c.api) { syncProgress = it }
+                phoneContacts = stats.contacts
+                matchedUsers = matches
             } catch (e: Exception) {
                 error = (e as? ApiException)?.message ?: e.message
             } finally {
