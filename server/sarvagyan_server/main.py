@@ -46,6 +46,7 @@ from sarvagyan_server.languages import catalog, get_language
 from sarvagyan_server.providers.gnani_stt import GnaniRecognizer
 from sarvagyan_server.providers.base import ProviderError
 from sarvagyan_server.providers.gnani_tts import GnaniSynthesizer
+from sarvagyan_server.providers.llm_translate import LlmTranslator
 from sarvagyan_server.providers.mymemory import MyMemoryTranslator
 from sarvagyan_server.credits import Meter, TtsCache
 from sarvagyan_server.realtime import CallRoom, Participant
@@ -60,6 +61,15 @@ WAITING_TTL_S = 15 * 60
 MAX_WS_TEXT = 64 * 1024
 MAX_FRAME = 4096
 WS_PROTOCOL = "sarvagyan.v1"  # browsers can't set headers on a WebSocket: they offer [WS_PROTOCOL, "auth.<token>"]
+
+
+def make_translator(settings: Settings):
+    """The LLM translator when a key is set (MyMemory/Google as its fallback), otherwise MyMemory/Google alone."""
+    free = MyMemoryTranslator(settings.mymemory_email)
+    key = settings.translate_llm_key.get_secret_value().strip()
+    if not key:
+        return free
+    return LlmTranslator(settings.translate_llm_url, key, settings.translate_llm_model, free)
 
 
 def ws_credentials(ws: WebSocket) -> tuple[str, str | None]:
@@ -80,7 +90,7 @@ class Services:
         self.db = db or Database(settings.data_path / "sarvagyan.sqlite3")
         key = settings.gnani_api_key.get_secret_value()
         self.recognizer = recognizer or GnaniRecognizer(key, settings.gnani_stt_url, settings.stt_model)
-        self.translator = translator or MyMemoryTranslator(settings.mymemory_email)
+        self.translator = translator or make_translator(settings)
         self.synthesizer_factory = synthesizer_factory or (
             lambda: GnaniSynthesizer(key, settings.gnani_tts_url, settings.tts_model))
         self.voicemail_pace_s = voicemail_pace_s
@@ -844,7 +854,10 @@ def create_app(services: Services | None = None) -> FastAPI:
         except Exception as exc:  # report, never raise
             out["translation"] = {"ok": False, "error": getattr(exc, "message", type(exc).__name__),
                                   "code": getattr(exc, "code", None)}  # fmt: skip
-        gtx = getattr(s.translator, "_fallback_gtx", None)
+        if isinstance(s.translator, LlmTranslator):  # did the model answer, or why did it fall back?
+            out["translation"]["model"] = s.translator.model
+            out["translation"]["llm"] = s.translator.last_error or ("ok" if s.translator.available else "paused")
+        gtx = getattr(getattr(s.translator, "fallback", s.translator), "_fallback_gtx", None)
         if gtx is not None:  # which free provider is refusing this server (they limit by IP address)
             with contextlib.suppress(Exception):
                 out["translation"]["google"] = "ok" if await asyncio.wait_for(gtx(probe, src, tgt), 10) else "refused"

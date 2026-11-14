@@ -25,6 +25,12 @@ services:
         sync: false
       - key: MYMEMORY_EMAIL
         sync: false
+      - key: HF_TOKEN  # translation by an LLM (Hugging Face Inference Providers); needs credit on the account
+        sync: false
+      - key: TRANSLATE_LLM_URL  # optional: another OpenAI-compatible API instead of Hugging Face
+        sync: false
+      - key: TRANSLATE_LLM_MODEL
+        sync: false
       - key: TURN_URLS  # optional relay for mobile data, e.g. a free metered.ca plan; leave empty to skip
         sync: false
       - key: TURN_USERNAME

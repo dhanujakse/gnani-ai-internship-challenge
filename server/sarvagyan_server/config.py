@@ -8,7 +8,7 @@ import time
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     stt_model: str = "prisma-v3.0"  # measured faster than v2.5 on streaming, supports indic-auto
     tts_model: str = "timbre-v2.5"
     mymemory_email: str = ""
+    # translation by an LLM over an OpenAI-compatible API (providers/llm_translate.py); MyMemory/Google stay as the
+    # fallback. Unset key = fallback only. HF_TOKEN works as the key for the default Hugging Face endpoint.
+    translate_llm_key: SecretStr = Field(SecretStr(""), validation_alias=AliasChoices("TRANSLATE_LLM_KEY", "HF_TOKEN"))
+    translate_llm_url: str = "https://router.huggingface.co/v1"
+    translate_llm_model: str = "google/gemma-3-27b-it"
     auth_secret: SecretStr = SecretStr("")
     demo_mode: bool = True
     stun_urls: str = "stun:stun.l.google.com:19302"
