@@ -1,12 +1,14 @@
 package ai.mack.sarvagyan.ui.screens
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,27 +27,27 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.MeetingRoom
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,6 +61,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -79,7 +83,7 @@ import ai.mack.sarvagyan.data.UserSearchResult
 import ai.mack.sarvagyan.data.normaliseCode
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
-import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
+import ai.mack.sarvagyan.ui.components.PostLoginBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.LanguagePill
@@ -93,8 +97,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Unified Call Hub: Consolidates direct member calls, contact discovery, and room creation/joining
- * into one seamless, structured workflow.
+ * Unified Call Hub: Consolidates direct member calls, contacts, discovery,
+ * and room operations into one streamlined, cohesive experience.
  */
 @Composable
 fun StartCallHubScreen(
@@ -107,125 +111,243 @@ fun StartCallHubScreen(
     val context = LocalContext.current
     val c = context.container
     val scope = rememberCoroutineScope()
+    val user by c.user.collectAsStateWithLifecycle()
     val placeCall = rememberPlaceCall(onCallStarted)
 
-    // 0: Direct Call / Contact, 1: Create or Join Room
+    // Primary mode: 0: Direct Call / Contact, 1: Create or Join Room
     var selectedOption by remember { mutableIntStateOf(0) }
 
-    // Direct Call state
-    var searchQuery by remember { mutableStateOf("") }
-    var searching by remember { mutableStateOf(false) }
+    // Contact Sub-Tab: 0: My Contacts, 1: Discover from Phone
+    var contactSubTab by remember { mutableIntStateOf(0) }
+
+    // Direct search & dialer state
+    var dialNumber by remember { mutableStateOf("") }
+    var dialingPhone by remember { mutableStateOf(false) }
+
+    // Username search & add state
+    var usernameQuery by remember { mutableStateOf("") }
+    var suggestions by remember { mutableStateOf<List<UserSearchResult>>(emptyList()) }
+    var searchingUsers by remember { mutableStateOf(false) }
     var searchAttempted by remember { mutableStateOf(false) }
-    var usernameResults by remember { mutableStateOf<List<UserSearchResult>>(emptyList()) }
-    var phoneResult by remember { mutableStateOf<MatchedContact?>(null) }
+    var addingContact by remember { mutableStateOf(false) }
+    val usernameFocus = remember { FocusRequester() }
+
+    // Contact list state
     var contacts by remember { mutableStateOf<List<ContactUser>?>(null) }
-    var matchedPhoneContacts by remember { mutableStateOf<List<MatchedContact>>(emptyList()) }
-    var syncingPhone by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    // Phone discovery state
+    var hasContactPermission by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED)
+    }
+    var phoneContacts by remember { mutableStateOf<List<DevicePhoneContact>>(emptyList()) }
+    var matchedUsers by remember { mutableStateOf<List<MatchedContact>>(emptyList()) }
+    var syncingContacts by remember { mutableStateOf(false) }
+    var syncProgress by remember { mutableStateOf<String?>(null) }
+    var discoverFilterQuery by remember { mutableStateOf("") }
 
     // Room join state
     var roomCode by remember { mutableStateOf("") }
 
-    val hasContactPermission = remember {
-        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+    fun mergeContact(added: ContactUser) {
+        val current = contacts ?: emptyList()
+        contacts = (current.filterNot { it.id == added.id } + added).sortedBy { it.name.lowercase() }
     }
-    var permissionGranted by remember { mutableStateOf(hasContactPermission) }
 
-    fun syncContacts() {
-        if (!permissionGranted) return
-        syncingPhone = true
+    suspend fun loadContacts() {
+        try {
+            contacts = c.api.contacts().contacts
+            error = null
+        } catch (e: ApiException) {
+            error = e.message
+            if (contacts == null) contacts = emptyList()
+        }
+    }
+
+    fun syncPhone() {
+        if (!hasContactPermission) return
+        syncingContacts = true
         scope.launch {
             try {
-                val (_, matches) = syncDeviceContactsWithServer(context, c.api)
-                matchedPhoneContacts = matches
+                val (stats, matches) = syncDeviceContactsWithServer(context, c.api) { syncProgress = it }
+                phoneContacts = stats.contacts
+                matchedUsers = matches
             } catch (e: Exception) {
-                // Keep existing contacts on failure
+                error = (e as? ApiException)?.message ?: e.message
             } finally {
-                syncingPhone = false
+                syncingContacts = false
+                syncProgress = null
             }
         }
     }
 
     val contactPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        permissionGranted = granted
-        if (granted) syncContacts()
+        hasContactPermission = granted
+        if (granted) syncPhone()
     }
 
-    // Load initial contacts and sync if permission already granted
     LaunchedEffect(Unit) {
-        try {
-            contacts = c.api.contacts().contacts
-        } catch (e: ApiException) {
-            contacts = emptyList()
-        }
-        if (permissionGranted) syncContacts()
+        loadContacts()
+        if (hasContactPermission) syncPhone()
     }
 
-    // Debounced search for username or phone number
-    LaunchedEffect(searchQuery) {
-        val query = searchQuery.trim()
-        if (query.isEmpty()) {
-            usernameResults = emptyList()
-            phoneResult = null
-            searching = false
+    // Debounced username search
+    LaunchedEffect(usernameQuery) {
+        val clean = usernameQuery.trim().removePrefix("@").trim()
+        if (clean.isEmpty()) {
+            suggestions = emptyList()
+            searchingUsers = false
             searchAttempted = false
             return@LaunchedEffect
         }
-
-        searching = true
+        searchingUsers = true
         searchAttempted = false
         delay(300)
+        try {
+            suggestions = c.api.searchUsers(clean).users.take(10)
+            searchAttempted = true
+        } catch (_: Exception) {
+            suggestions = emptyList()
+            searchAttempted = true
+        } finally {
+            searchingUsers = false
+        }
+    }
 
-        // Determine if searching by phone or username
-        val isPhone = query.startsWith("+") || query.all { it.isDigit() || it == '-' || it == ' ' }
-        if (isPhone) {
-            val norm = normalizePhoneE164(query, "+91")
-            if (norm != null) {
-                try {
-                    val hash = sha256Hex(norm)
-                    val res = c.api.matchPhones(listOf(hash))
-                    phoneResult = res.matches.firstOrNull()
-                    usernameResults = emptyList()
-                } catch (_: Exception) {
-                    phoneResult = null
-                }
-            } else {
-                phoneResult = null
+    fun addPerson(targetUsername: String? = null, targetUserId: String? = null) {
+        val clean = targetUsername?.trim()?.removePrefix("@")?.trim()?.takeIf { it.isNotEmpty() }
+        if (clean == null && targetUserId.isNullOrBlank()) return
+        addingContact = true
+        scope.launch {
+            try {
+                val added = c.api.addContact(username = clean, userId = targetUserId)
+                mergeContact(added)
+                usernameQuery = ""
+                suggestions = emptyList()
+                searchAttempted = false
+                error = null
+                loadContacts()
+            } catch (e: ApiException) {
+                error = e.message
+            } finally {
+                addingContact = false
             }
-        } else {
-            val cleanUsername = query.removePrefix("@").trim()
-            if (cleanUsername.isNotEmpty()) {
-                try {
-                    usernameResults = c.api.searchUsers(cleanUsername).users.take(10)
-                    phoneResult = null
-                } catch (_: Exception) {
-                    usernameResults = emptyList()
+        }
+    }
+
+    fun callOrAddByPhone() {
+        val norm = normalizePhoneE164(dialNumber, "+91")
+        if (norm == null) {
+            error = "Enter a valid phone number (e.g. +91 9876543210)."
+            return
+        }
+        dialingPhone = true
+        error = null
+        scope.launch {
+            try {
+                val matches = c.api.matchPhones(listOf(sha256Hex(norm))).matches
+                val found = matches.firstOrNull()
+                if (found != null) {
+                    placeCall(found.id, found.name)
+                } else {
+                    error = "No Sarvagyan account found with that phone number."
+                }
+            } catch (e: Exception) {
+                error = (e as? ApiException)?.message ?: e.message
+            } finally {
+                dialingPhone = false
+            }
+        }
+    }
+
+    fun String.normFilter(): String = lowercase().replace(" ", "").replace("-", "")
+
+    val phoneByHash = remember(phoneContacts) { phoneContacts.associate { it.hash to it.number } }
+    val allMatched = remember(matchedUsers, phoneContacts, contacts) {
+        val list = matchedUsers.toMutableList()
+        val existingIds = list.map { it.id }.toSet()
+        val existingHashes = list.mapNotNull { it.phoneHash }.toSet()
+
+        phoneContacts.forEach { pc ->
+            if (pc.hash !in existingHashes) {
+                val pcNorm = pc.name.normFilter()
+                val match = contacts?.firstOrNull { c ->
+                    c.id !in existingIds && (
+                        c.name.normFilter() == pcNorm ||
+                        (c.username?.normFilter() != null && c.username.normFilter() == pcNorm) ||
+                        (pcNorm.length >= 4 && c.name.normFilter().contains(pcNorm)) ||
+                        (c.name.normFilter().length >= 4 && pcNorm.contains(c.name.normFilter()))
+                    )
+                }
+                if (match != null) {
+                    list.add(
+                        MatchedContact(
+                            id = match.id,
+                            name = pc.name,
+                            username = match.username,
+                            avatar = match.avatar,
+                            language = match.language,
+                            phoneHash = pc.hash,
+                        )
+                    )
                 }
             }
         }
-        searching = false
-        searchAttempted = true
+        list
     }
 
-    EmeraldAnimatedBackground {
+    val matchedHashes = remember(allMatched) { allMatched.mapNotNull { it.phoneHash }.toSet() }
+    val unmatched = remember(phoneContacts, matchedHashes, contacts) {
+        phoneContacts.filter { pc ->
+            if (pc.hash in matchedHashes) false
+            else {
+                val pcNorm = pc.name.normFilter()
+                val matchesKnown = contacts?.any { c ->
+                    c.name.normFilter() == pcNorm ||
+                    (c.username?.normFilter() != null && c.username.normFilter() == pcNorm) ||
+                    (pcNorm.length >= 4 && c.name.normFilter().contains(pcNorm)) ||
+                    (c.name.normFilter().length >= 4 && pcNorm.contains(c.name.normFilter()))
+                } == true
+                !matchesKnown
+            }
+        }
+    }
+
+    val normDiscoverQuery = remember(discoverFilterQuery) { discoverFilterQuery.normFilter() }
+    val filteredMatched = remember(allMatched, phoneByHash, normDiscoverQuery) {
+        if (normDiscoverQuery.isEmpty()) allMatched
+        else allMatched.filter { m ->
+            m.name.normFilter().contains(normDiscoverQuery) ||
+                (m.username?.normFilter()?.contains(normDiscoverQuery) == true) ||
+                (m.phoneHash?.let { phoneByHash[it]?.normFilter()?.contains(normDiscoverQuery) } == true)
+        }
+    }
+    val filteredUnmatched = remember(unmatched, normDiscoverQuery) {
+        if (normDiscoverQuery.isEmpty()) unmatched
+        else unmatched.filter { u ->
+            u.name.normFilter().contains(normDiscoverQuery) || u.number.normFilter().contains(normDiscoverQuery)
+        }
+    }
+
+    PostLoginBackground {
         Column(Modifier.fillMaxSize()) {
             // Screen Header
             Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Brand.HighlightAccent)
                 }
                 Column(Modifier.weight(1f)) {
                     Text("Start a Call", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Brand.PrimaryText)
-                    Text("Choose how you want to connect", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Call someone directly or create / join a room", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
-            // Primary 2-Option Selector: Option A (Direct Call / Contact) vs Option B (Create or Join Room)
+            // Primary 2-Option Selector
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -260,172 +382,354 @@ fun StartCallHubScreen(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
 
             if (selectedOption == 0) {
                 // ---------------------------------------------------------------------------------
-                // OPTION A: DIRECT CALL / CONTACT DISCOVERY
+                // OPTION A: DIRECT CALL / CONTACT (With embedded My Contacts & Discover from Phone)
                 // ---------------------------------------------------------------------------------
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                 ) {
-                    // Search Bar
-                    item(key = "search_bar") {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            label = { Text("Search by @username or phone number") },
-                            placeholder = { Text("e.g. @priya or +91 9876543210") },
-                            leadingIcon = {
-                                Icon(Icons.Filled.Search, contentDescription = null, tint = Brand.HighlightAccent)
-                            },
-                            trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { searchQuery = "" }) {
-                                        Icon(Icons.Filled.Close, contentDescription = "Clear search")
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                    }
-
-                    // Live Search Results
-                    if (searchQuery.isNotBlank()) {
-                        item(key = "search_status") {
-                            SectionTitle("Search Results")
-                        }
-
-                        if (searching) {
-                            item(key = "searching_indicator") {
-                                Row(
-                                    Modifier.fillMaxWidth().padding(16.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(10.dp))
-                                    Text("Searching Sarvagyan members…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        } else if (phoneResult != null) {
-                            val res = phoneResult!!
-                            item(key = "phone_result_${res.id}") {
-                                MemberCallRow(
-                                    name = res.name,
-                                    username = res.username,
-                                    avatar = res.avatar,
-                                    language = c.language(res.language)?.name ?: res.language,
-                                    isMember = true,
-                                    onCall = { placeCall(res.id, res.name) },
-                                    onVoicemail = { onVoicemail(res.id, res.name) },
-                                )
-                            }
-                        } else if (usernameResults.isNotEmpty()) {
-                            items(usernameResults, key = { "user_res_${it.id}" }) { u ->
-                                MemberCallRow(
-                                    name = u.displayName,
-                                    username = u.username,
-                                    avatar = u.avatar,
-                                    language = null,
-                                    isMember = true,
-                                    onCall = { placeCall(u.id, u.displayName) },
-                                    onVoicemail = { onVoicemail(u.id, u.displayName) },
-                                )
-                            }
-                        } else if (searchAttempted) {
-                            item(key = "no_search_results") {
-                                EmptyState(
-                                    Icons.Filled.Person,
-                                    "No members found",
-                                    "No Sarvagyan account matched '$searchQuery'. Try checking the spelling or phone number."
-                                )
-                            }
-                        }
-                        item(key = "search_divider") {
-                            Spacer(Modifier.height(16.dp))
-                            HorizontalDivider()
-                            Spacer(Modifier.height(12.dp))
-                        }
-                    }
-
-                    // Synchronized / Discovered Members Section
-                    if (matchedPhoneContacts.isNotEmpty()) {
-                        item(key = "discovered_from_phone_header") {
-                            SectionTitle("From Your Phone Contacts")
-                        }
-                        items(matchedPhoneContacts, key = { "matched_phone_${it.id}" }) { m ->
-                            MemberCallRow(
-                                name = m.name,
-                                username = m.username,
-                                avatar = m.avatar,
-                                language = c.language(m.language)?.name ?: m.language,
-                                isMember = true,
-                                onCall = { placeCall(m.id, m.name) },
-                                onVoicemail = { onVoicemail(m.id, m.name) },
+                    // Call by Phone Number input (direct dialing)
+                    item(key = "call_by_phone_number") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = dialNumber,
+                                onValueChange = { dialNumber = it.filter { ch -> ch.isDigit() || ch == '+' || ch == ' ' || ch == '-' }.take(20) },
+                                label = { Text("Call by phone number") },
+                                placeholder = { Text("e.g. +91 9876543210") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Go),
+                                keyboardActions = KeyboardActions(onGo = { callOrAddByPhone() }),
                             )
-                        }
-                        item(key = "phone_contacts_spacer") {
-                            Spacer(Modifier.height(12.dp))
-                        }
-                    }
-
-                    // Existing Saved Contacts Section
-                    item(key = "contacts_header") {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            SectionTitle("Your Contacts")
-                            Spacer(Modifier.weight(1f))
-                            if (!permissionGranted) {
-                                TextButton(
-                                    onClick = { contactPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp)
-                                ) {
-                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Sync Phone", style = MaterialTheme.typography.labelMedium)
+                            Spacer(Modifier.width(8.dp))
+                            IconButton(
+                                onClick = { callOrAddByPhone() },
+                                enabled = dialNumber.isNotBlank() && !dialingPhone,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (dialNumber.isNotBlank()) Brand.PrimaryAccent else MaterialTheme.colorScheme.surfaceVariant),
+                            ) {
+                                if (dialingPhone) {
+                                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Brand.ButtonContent)
+                                } else {
+                                    Icon(Icons.Filled.Call, contentDescription = "Call number", tint = if (dialNumber.isNotBlank()) Brand.ButtonContent else MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
+                        Spacer(Modifier.height(14.dp))
                     }
 
-                    val contactList = contacts
-                    when {
-                        contactList == null -> item(key = "contacts_loading") {
-                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Loading contacts…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        contactList.isEmpty() && matchedPhoneContacts.isEmpty() -> item(key = "contacts_empty") {
-                            EmptyState(
-                                Icons.Filled.People,
-                                "No contacts yet",
-                                "Search above using a member's @username or mobile number to connect and start a call."
-                            )
-                        }
-                        else -> {
-                            if (contactList.isNotEmpty()) {
-                                items(contactList, key = { "saved_contact_${it.id}" }) { contact ->
-                                    MemberCallRow(
-                                        name = contact.name,
-                                        username = contact.username,
-                                        avatar = contact.avatar,
-                                        language = c.language(contact.language)?.name ?: contact.language,
-                                        isMember = true,
-                                        onCall = { placeCall(contact.id, contact.name) },
-                                        onVoicemail = { onVoicemail(contact.id, contact.name) },
+                    // Contact Sub-Tabs: "My Contacts" vs "Discover from Phone"
+                    item(key = "contact_sub_tabs") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            listOf("My Contacts", "Discover from Phone").forEachIndexed { i, label ->
+                                val selected = contactSubTab == i
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                        .clickable {
+                                            contactSubTab = i
+                                            if (i == 1 && hasContactPermission && phoneContacts.isEmpty()) {
+                                                syncPhone()
+                                            }
+                                        }
+                                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        label,
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        textAlign = TextAlign.Center,
                                     )
                                 }
                             }
                         }
+                        Spacer(Modifier.height(14.dp))
                     }
-                    item(key = "bottom_padding") {
-                        Spacer(Modifier.height(32.dp))
+
+                    error?.let { err ->
+                        item(key = "error_banner") {
+                            ErrorBanner(err, onDismiss = { error = null })
+                            Spacer(Modifier.height(10.dp))
+                        }
+                    }
+
+                    if (contactSubTab == 0) {
+                        // -------------------------------------------------------------------------
+                        // SUB-TAB 0: MY CONTACTS (Add by @username with suggestions, Contacts list)
+                        // -------------------------------------------------------------------------
+                        item(key = "add_by_username_box") {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = usernameQuery,
+                                    onValueChange = { usernameQuery = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '@' || ch == ' ' }.take(25) },
+                                    label = { Text("Find & Add by @username") },
+                                    placeholder = { Text("Type username...") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f).focusRequester(usernameFocus),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    keyboardActions = KeyboardActions(onSearch = {
+                                        val clean = usernameQuery.trim().removePrefix("@").trim()
+                                        if (clean.isNotEmpty()) addPerson(targetUsername = clean)
+                                    }),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                IconButton(
+                                    onClick = {
+                                        val clean = usernameQuery.trim().removePrefix("@").trim()
+                                        if (clean.isNotEmpty()) addPerson(targetUsername = clean)
+                                    },
+                                    enabled = usernameQuery.isNotBlank() && !addingContact,
+                                ) {
+                                    Icon(Icons.Filled.PersonAdd, "Add contact", tint = Brand.HighlightAccent)
+                                }
+                            }
+                        }
+
+                        // Username suggestions while typing
+                        val cleanQuery = usernameQuery.trim().removePrefix("@").trim()
+                        if (cleanQuery.isNotEmpty()) {
+                            item(key = "username_suggestions") {
+                                Spacer(Modifier.height(8.dp))
+                                when {
+                                    searchingUsers -> Text("Searching…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                                    suggestions.isEmpty() && searchAttempted -> Text("No user found", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                                    suggestions.isNotEmpty() -> AppCard {
+                                        suggestions.forEachIndexed { idx, s ->
+                                            val isAdded = contacts?.any { it.id == s.id } == true
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Avatar(s.displayName, LocalCallColors.current.peer, 38.dp, avatar = s.avatar, useMain = false)
+                                                Spacer(Modifier.width(12.dp))
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(s.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                                    s.username?.let { Text("@$it", style = MaterialTheme.typography.bodySmall, color = Brand.HighlightAccent) }
+                                                }
+                                                IconButton(onClick = { placeCall(s.id, s.displayName) }) {
+                                                    Icon(Icons.Filled.Call, contentDescription = "Call ${s.displayName}", tint = Brand.PrimaryAccent)
+                                                }
+                                                if (!isAdded) {
+                                                    TextButton(onClick = { addPerson(targetUsername = s.username, targetUserId = s.id) }, enabled = !addingContact) {
+                                                        Text("Add")
+                                                    }
+                                                } else {
+                                                    Text("Added", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                            }
+                                            if (idx < suggestions.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+
+                        item(key = "my_contacts_header") {
+                            SectionTitle("Your Contacts (Tap to Call)")
+                        }
+
+                        val contactList = contacts
+                        when {
+                            contactList == null -> item(key = "loading_contacts") {
+                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Loading contacts…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            contactList.isEmpty() -> item(key = "empty_contacts") {
+                                EmptyState(
+                                    Icons.Filled.People,
+                                    "No contacts yet",
+                                    "Add people above by their @username or phone number. Tap any contact to place a direct call."
+                                )
+                            }
+                            else -> items(contactList, key = { "contact_${it.id}" }) { contact ->
+                                ContactItemRow(
+                                    name = contact.name,
+                                    username = contact.username,
+                                    avatar = contact.avatar,
+                                    language = c.language(contact.language)?.name ?: contact.language,
+                                    onTapCall = { placeCall(contact.id, contact.name) },
+                                    onVoicemail = { onVoicemail(contact.id, contact.name) },
+                                    menu = listOf(
+                                        "Remove from contacts" to { scope.launch { runCatching { c.api.removeContact(contact.id) }; loadContacts() } },
+                                        "Block" to { scope.launch { runCatching { c.api.block(contact.id) }; loadContacts() } },
+                                    )
+                                )
+                            }
+                        }
+
+                        // Who can call me filter section
+                        item(key = "who_can_call_me_section") {
+                            Spacer(Modifier.height(16.dp))
+                            SectionTitle("Who can call me")
+                            AppCard {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("contacts" to "My contacts", "everyone" to "Everyone").forEach { (value, label) ->
+                                        FilterChip(
+                                            selected = (user?.allowCalls ?: "contacts") == value,
+                                            onClick = {
+                                                scope.launch {
+                                                    try { c.user.value = c.api.updateMe(allowCalls = value) } catch (e: ApiException) { error = e.message }
+                                                }
+                                            },
+                                            label = { Text(label) }
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(32.dp))
+                        }
+                    } else {
+                        // -------------------------------------------------------------------------
+                        // SUB-TAB 1: DISCOVER FROM PHONE (Sync, Search, Matched & Invite list)
+                        // -------------------------------------------------------------------------
+                        if (!hasContactPermission) {
+                            item(key = "permission_request_banner") {
+                                AppCard {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Filled.People, contentDescription = null, tint = Brand.HighlightAccent, modifier = Modifier.size(32.dp))
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Find friends from your phone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                            Text("Discover which of your phone contacts already use Sarvagyan.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                    PrimaryButton(
+                                        text = "Sync Phone Contacts",
+                                        onClick = { contactPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                                Spacer(Modifier.height(16.dp))
+                            }
+                        } else {
+                            // Sync status bar with manual sync trigger
+                            item(key = "sync_status_bar") {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            if (syncingContacts) syncProgress ?: "Syncing phone contacts…"
+                                            else "${phoneContacts.size} contacts scanned · ${allMatched.size} on Sarvagyan",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (syncingContacts) Brand.HighlightAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    IconButton(onClick = { syncPhone() }, enabled = !syncingContacts) {
+                                        Icon(Icons.Filled.Refresh, contentDescription = "Re-sync contacts", tint = Brand.HighlightAccent)
+                                    }
+                                }
+                                if (syncingContacts) {
+                                    Spacer(Modifier.height(6.dp))
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
+                                }
+                                Spacer(Modifier.height(12.dp))
+                            }
+
+                            // Search filter box for phone contacts
+                            item(key = "phone_search_box") {
+                                OutlinedTextField(
+                                    value = discoverFilterQuery,
+                                    onValueChange = { discoverFilterQuery = it },
+                                    label = { Text("Search phone contacts") },
+                                    placeholder = { Text("Search by name or number...") },
+                                    leadingIcon = { Icon(Icons.Filled.Search, null, tint = Brand.HighlightAccent) },
+                                    trailingIcon = {
+                                        if (discoverFilterQuery.isNotEmpty()) {
+                                            IconButton(onClick = { discoverFilterQuery = "" }) { Icon(Icons.Filled.Close, null) }
+                                        }
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Spacer(Modifier.height(14.dp))
+                            }
+
+                            // Section: Discovered on Sarvagyan
+                            item(key = "matched_section_header") {
+                                SectionTitle("On Sarvagyan (${filteredMatched.size})")
+                            }
+                            if (filteredMatched.isEmpty()) {
+                                item(key = "no_matched_contacts") {
+                                    Text(
+                                        if (discoverFilterQuery.isNotEmpty()) "No matching friends found." else "None of your phone contacts have joined Sarvagyan yet.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 8.dp),
+                                    )
+                                }
+                            } else {
+                                items(filteredMatched, key = { "matched_${it.id}" }) { m ->
+                                    val num = m.phoneHash?.let { phoneByHash[it] }
+                                    ContactItemRow(
+                                        name = m.name,
+                                        username = m.username,
+                                        avatar = m.avatar,
+                                        language = c.language(m.language)?.name ?: m.language,
+                                        subtitle = num,
+                                        onTapCall = { placeCall(m.id, m.name) },
+                                        onVoicemail = { onVoicemail(m.id, m.name) },
+                                    )
+                                }
+                            }
+
+                            // Section: Invite from your phone
+                            item(key = "unmatched_section_header") {
+                                Spacer(Modifier.height(16.dp))
+                                SectionTitle("Invite to Sarvagyan (${filteredUnmatched.size})")
+                            }
+                            if (filteredUnmatched.isEmpty()) {
+                                item(key = "no_unmatched_contacts") {
+                                    Text("No contacts to invite.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            } else {
+                                items(filteredUnmatched.take(50), key = { "unmatched_${it.hash}" }) { u ->
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Avatar(u.name, LocalCallColors.current.peer, 40.dp, avatar = null, useMain = false)
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(u.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                            Text(u.number, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        TextButton(onClick = { shareInvite(context, u.name) }) {
+                                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Invite")
+                                        }
+                                    }
+                                }
+                            }
+                            item(key = "discover_bottom_spacer") {
+                                Spacer(Modifier.height(32.dp))
+                            }
+                        }
                     }
                 }
             } else {
@@ -556,50 +860,68 @@ fun StartCallHubScreen(
 }
 
 /**
- * Reusable contact/member row with 1-click Direct Call initiation.
+ * Reusable contact item row where tapping anywhere on the row immediately places a call.
  */
 @Composable
-private fun MemberCallRow(
+private fun ContactItemRow(
     name: String,
     username: String?,
     avatar: String?,
     language: String?,
-    isMember: Boolean,
-    onCall: () -> Unit,
+    subtitle: String? = null,
+    onTapCall: () -> Unit,
     onVoicemail: () -> Unit,
+    menu: List<Pair<String, () -> Unit>> = emptyList(),
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable { onCall() }
+            .clickable { onTapCall() }
             .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(name, LocalCallColors.current.peer, 44.dp, avatar = avatar, useMain = false)
+        Avatar(name, LocalCallColors.current.peer, 42.dp, avatar = avatar, useMain = false)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                username?.let {
-                    Text("@$it", style = MaterialTheme.typography.bodySmall, color = Brand.HighlightAccent)
+                if (username != null) {
+                    Text("@$username", style = MaterialTheme.typography.bodySmall, color = Brand.HighlightAccent)
                 }
-                language?.let {
-                    LanguagePill(it, highlighted = false)
+                if (subtitle != null) {
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (language != null) {
+                    LanguagePill(language, highlighted = false)
                 }
             }
         }
         IconButton(onClick = onVoicemail) {
-            Icon(Icons.Filled.Voicemail, contentDescription = "Send voicemail", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Filled.Voicemail, contentDescription = "Leave voicemail", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(
-            onClick = onCall,
+            onClick = onTapCall,
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Brand.PrimaryAccent)
+                .background(Brand.PrimaryAccent),
         ) {
             Icon(Icons.Filled.Call, contentDescription = "Call $name", tint = Brand.ButtonContent, modifier = Modifier.size(20.dp))
+        }
+        if (menu.isNotEmpty()) {
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Options")
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    menu.forEach { (label, act) ->
+                        DropdownMenuItem(text = { Text(label) }, onClick = { showMenu = false; act() })
+                    }
+                }
+            }
         }
     }
 }

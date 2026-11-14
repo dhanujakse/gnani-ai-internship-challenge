@@ -1,9 +1,5 @@
 package ai.mack.sarvagyan.ui.screens
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,13 +25,11 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Voicemail
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -77,7 +71,7 @@ import ai.mack.sarvagyan.data.formatDuration
 import ai.mack.sarvagyan.data.normaliseCode
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
-import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
+import ai.mack.sarvagyan.ui.components.PostLoginBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.LanguagePill
@@ -111,48 +105,6 @@ fun HomeScreen(
     var unread by remember { mutableStateOf(0) }
     val placeCall = rememberPlaceCall(onResumeCall)
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-
-    // Dashboard Contact Synchronization state
-    var syncingContacts by remember { mutableStateOf(false) }
-    var syncProgressText by remember { mutableStateOf<String?>(null) }
-    var syncSummary by remember { mutableStateOf<String?>(null) }
-    var permissionDenied by remember { mutableStateOf(false) }
-
-    lateinit var triggerSyncRef: () -> Unit
-
-    val contactPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            permissionDenied = false
-            triggerSyncRef()
-        } else {
-            permissionDenied = true
-        }
-    }
-
-    fun triggerSync() {
-        if (syncingContacts) return
-        permissionDenied = false
-        val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-        if (!hasPermission) {
-            contactPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
-            return
-        }
-        syncingContacts = true
-        syncProgressText = "Reading contacts…"
-        scope.launch {
-            try {
-                val (stats, matches) = syncDeviceContactsWithServer(context, c.api) { syncProgressText = it }
-                syncSummary = "${stats.contactsRead} contacts scanned · ${matches.size} on Sarvagyan"
-                error = null
-            } catch (e: Exception) {
-                syncSummary = "Sync failed: ${(e as? ApiException)?.message ?: e.message}"
-            } finally {
-                syncingContacts = false
-                syncProgressText = null
-            }
-        }
-    }
-    triggerSyncRef = { triggerSync() }
 
     suspend fun load() {
         error = null
@@ -259,7 +211,7 @@ fun HomeScreen(
             }
         }
     ) {
-        EmeraldAnimatedBackground {
+        PostLoginBackground {
             Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
                 // Header: Profile Avatar & Details (Click opens drawer)
                 Row(
@@ -331,39 +283,6 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(12.dp))
 
-        // Primary Action 3: Sync Contacts
-        AppCard(Modifier.clickable(role = Role.Button, onClick = { triggerSync() })) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.Refresh,
-                    contentDescription = null,
-                    tint = Brand.HighlightAccent,
-                    modifier = Modifier.size(28.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Sync Contacts", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-                    when {
-                        syncingContacts -> Text(syncProgressText ?: "Syncing phone contacts…", style = MaterialTheme.typography.bodyMedium, color = Brand.HighlightAccent)
-                        permissionDenied -> Text("Contact permission needed. Tap to grant.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                        syncSummary != null -> Text(syncSummary!!, style = MaterialTheme.typography.bodyMedium, color = LocalCallColors.current.success)
-                        else -> Text("Find friends from your phone who are on Sarvagyan", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-                if (syncingContacts) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                } else if (permissionDenied) {
-                    StatusChip("Allow", MaterialTheme.colorScheme.error)
-                } else if (syncSummary != null) {
-                    StatusChip("Synced", LocalCallColors.current.success)
-                } else {
-                    Text("Sync", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
         AppCard(Modifier.clickable(role = Role.Button, onClick = onLanguages)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -379,19 +298,6 @@ fun HomeScreen(
                     if (settings.autoDetect) Text("Auto-detect secondary check on", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                 }
                 Text("Change", color = MaterialTheme.colorScheme.primary)
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        AppCard(Modifier.clickable(role = Role.Button, onClick = onContacts)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.People, null, tint = Brand.HighlightAccent, modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Contacts", style = MaterialTheme.typography.titleMedium)
-                    Text("Call people directly: their phone rings", style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
             }
         }
 

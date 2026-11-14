@@ -68,7 +68,7 @@ import ai.mack.sarvagyan.data.int
 import ai.mack.sarvagyan.data.objOrNull
 import ai.mack.sarvagyan.data.str
 import ai.mack.sarvagyan.ui.components.AppCard
-import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
+import ai.mack.sarvagyan.ui.components.PostLoginBackground
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.PrimaryButton
 import ai.mack.sarvagyan.ui.components.SecondaryButton
@@ -82,7 +82,7 @@ import kotlinx.serialization.json.JsonObject
 
 @Composable
 fun ScreenScaffold(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
-    EmeraldAnimatedBackground {
+    PostLoginBackground {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Brand.HighlightAccent) }

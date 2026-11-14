@@ -90,6 +90,7 @@ import ai.mack.sarvagyan.data.ContactUser
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
 import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
+import ai.mack.sarvagyan.ui.components.PostLoginBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.SectionTitle
@@ -263,7 +264,7 @@ internal suspend fun syncDeviceContactsWithServer(
     return stats to allMatches
 }
 
-private fun shareInvite(context: Context, contactName: String) {
+internal fun shareInvite(context: Context, contactName: String) {
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, "Join me on Sarvagyan for real-time multilingual voice translation! Web App: https://gnani-ai-internship-challenge.vercel.app")
@@ -468,7 +469,7 @@ fun ContactsScreen(onBack: () -> Unit, onCallStarted: () -> Unit, onVoicemail: (
         }
     }
 
-    EmeraldAnimatedBackground {
+    PostLoginBackground {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Brand.HighlightAccent) }

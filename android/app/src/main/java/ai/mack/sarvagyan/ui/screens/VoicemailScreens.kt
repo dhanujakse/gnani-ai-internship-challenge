@@ -113,7 +113,7 @@ import ai.mack.sarvagyan.data.UserSearchResult
 import ai.mack.sarvagyan.data.formatDuration
 import ai.mack.sarvagyan.ui.components.AppCard
 import ai.mack.sarvagyan.ui.components.Avatar
-import ai.mack.sarvagyan.ui.components.EmeraldAnimatedBackground
+import ai.mack.sarvagyan.ui.components.PostLoginBackground
 import ai.mack.sarvagyan.ui.components.EmptyState
 import ai.mack.sarvagyan.ui.components.ErrorBanner
 import ai.mack.sarvagyan.ui.components.LoadingView
@@ -907,7 +907,7 @@ fun ChatConversationScreen(
         else conv.peer?.username?.let { "@$it" } ?: ""
     } ?: ""
 
-    EmeraldAnimatedBackground {
+    PostLoginBackground {
         Column(
             Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(horizontal = 16.dp, vertical = 8.dp),
         ) {

@@ -243,7 +243,7 @@ export function TextField({
     <label className={`block ${className}`}>
       {label && <span className="mb-1.5 block text-[13px] font-medium text-sub">{label}</span>}
       <span
-        className={`flex items-center rounded-md border bg-bg2 px-4 transition-colors focus-within:border-highlight ${error ? "border-danger" : "border-line"}`}
+        className={`flex items-center overflow-hidden rounded-md border bg-bg2 px-4 transition-colors focus-within:border-highlight ${error ? "border-danger" : "border-line"}`}
       >
         {prefix && <span className="mr-0.5 text-[16px] text-sub">{prefix}</span>}
         <input

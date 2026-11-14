@@ -89,6 +89,47 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
+ * Single centralized configuration for the post-login mobile wallpaper background.
+ * Easily swappable by pointing to any drawable resource.
+ */
+object AppBackgroundConfig {
+    @androidx.annotation.DrawableRes
+    val POST_LOGIN_BACKGROUND_RES: Int = R.drawable.bg_app_postlogin
+}
+
+/**
+ * Cover-fit, centered post-login background image for authenticated screens.
+ * Features a subtle dark overlay (0.42f) to guarantee high contrast and readability
+ * for all cards, text, buttons, and icons without causing scroll lag or flickering.
+ */
+@Composable
+fun PostLoginBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Brand.PrimaryBg)
+    ) {
+        Image(
+            painter = painterResource(AppBackgroundConfig.POST_LOGIN_BACKGROUND_RES),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.Center,
+        )
+        // Subtle dark overlay ensuring crisp text readability
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Brand.PrimaryBg.copy(alpha = 0.42f))
+        )
+        content()
+    }
+}
+
+/**
  * Immersive Dark Emerald background with flowing light waves,
  * slowly floating green orbs, and subtle ambient particles.
  */
