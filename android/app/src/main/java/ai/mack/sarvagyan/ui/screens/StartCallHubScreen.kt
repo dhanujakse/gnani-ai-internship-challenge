@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,7 +37,10 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Voicemail
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,6 +51,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,6 +77,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -330,7 +336,7 @@ fun StartCallHubScreen(
     }
 
     PostLoginBackground {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
             // Screen Header
             Row(
                 Modifier
@@ -404,6 +410,16 @@ fun StartCallHubScreen(
                                 modifier = Modifier.weight(1f),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Go),
                                 keyboardActions = KeyboardActions(onGo = { callOrAddByPhone() }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Brand.PrimaryText,
+                                    unfocusedTextColor = Brand.PrimaryText,
+                                    focusedBorderColor = Brand.HighlightAccent,
+                                    unfocusedBorderColor = Brand.Borders.copy(alpha = 0.8f),
+                                    focusedLabelColor = Brand.HighlightAccent,
+                                    unfocusedLabelColor = Brand.SecondaryText,
+                                    focusedContainerColor = Brand.CardBg.copy(alpha = 0.85f),
+                                    unfocusedContainerColor = Brand.CardBg.copy(alpha = 0.65f),
+                                ),
                             )
                             Spacer(Modifier.width(8.dp))
                             IconButton(
@@ -412,7 +428,7 @@ fun StartCallHubScreen(
                                 modifier = Modifier
                                     .size(48.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(if (dialNumber.isNotBlank()) Brand.PrimaryAccent else MaterialTheme.colorScheme.surfaceVariant),
+                                    .background(if (dialNumber.isNotBlank()) Brand.PrimaryAccent else Brand.CardBg.copy(alpha = 0.65f)),
                             ) {
                                 if (dialingPhone) {
                                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Brand.ButtonContent)
@@ -488,6 +504,16 @@ fun StartCallHubScreen(
                                         val clean = usernameQuery.trim().removePrefix("@").trim()
                                         if (clean.isNotEmpty()) addPerson(targetUsername = clean)
                                     }),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Brand.PrimaryText,
+                                        unfocusedTextColor = Brand.PrimaryText,
+                                        focusedBorderColor = Brand.HighlightAccent,
+                                        unfocusedBorderColor = Brand.Borders.copy(alpha = 0.8f),
+                                        focusedLabelColor = Brand.HighlightAccent,
+                                        unfocusedLabelColor = Brand.SecondaryText,
+                                        focusedContainerColor = Brand.CardBg.copy(alpha = 0.85f),
+                                        unfocusedContainerColor = Brand.CardBg.copy(alpha = 0.65f),
+                                    ),
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 IconButton(
@@ -496,8 +522,20 @@ fun StartCallHubScreen(
                                         if (clean.isNotEmpty()) addPerson(targetUsername = clean)
                                     },
                                     enabled = usernameQuery.isNotBlank() && !addingContact,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (usernameQuery.isNotBlank()) Brand.HighlightAccent else Brand.CardBg.copy(alpha = 0.65f)),
                                 ) {
-                                    Icon(Icons.Filled.PersonAdd, "Add contact", tint = Brand.HighlightAccent)
+                                    if (addingContact) {
+                                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFF071B20))
+                                    } else {
+                                        Icon(
+                                            Icons.Filled.PersonAdd,
+                                            contentDescription = "Add contact",
+                                            tint = if (usernameQuery.isNotBlank()) Color(0xFF071B20) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -565,41 +603,25 @@ fun StartCallHubScreen(
                                 )
                             }
                             else -> items(contactList, key = { "contact_${it.id}" }) { contact ->
-                                ContactItemRow(
-                                    name = contact.name,
-                                    username = contact.username,
-                                    avatar = contact.avatar,
-                                    language = c.language(contact.language)?.name ?: contact.language,
-                                    onTapCall = { placeCall(contact.id, contact.name) },
-                                    onVoicemail = { onVoicemail(contact.id, contact.name) },
-                                    menu = listOf(
-                                        "Remove from contacts" to { scope.launch { runCatching { c.api.removeContact(contact.id) }; loadContacts() } },
-                                        "Block" to { scope.launch { runCatching { c.api.block(contact.id) }; loadContacts() } },
+                                AppCard(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                    ContactItemRow(
+                                        name = contact.name,
+                                        username = contact.username,
+                                        avatar = contact.avatar,
+                                        language = c.language(contact.language)?.name ?: contact.language,
+                                        onTapCall = { placeCall(contact.id, contact.name) },
+                                        onVoicemail = { onVoicemail(contact.id, contact.name) },
+                                        menu = listOf(
+                                            "Remove from contacts" to { scope.launch { runCatching { c.api.removeContact(contact.id) }; loadContacts() } },
+                                            "Block" to { scope.launch { runCatching { c.api.block(contact.id) }; loadContacts() } },
+                                        )
                                     )
-                                )
+                                }
                             }
                         }
 
-                        // Who can call me filter section
-                        item(key = "who_can_call_me_section") {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Who can call me")
-                            AppCard {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    listOf("contacts" to "My contacts", "everyone" to "Everyone").forEach { (value, label) ->
-                                        FilterChip(
-                                            selected = (user?.allowCalls ?: "contacts") == value,
-                                            onClick = {
-                                                scope.launch {
-                                                    try { c.user.value = c.api.updateMe(allowCalls = value) } catch (e: ApiException) { error = e.message }
-                                                }
-                                            },
-                                            label = { Text(label) }
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(32.dp))
+                        item(key = "contacts_bottom_spacer") {
+                            Spacer(Modifier.height(24.dp))
                         }
                     } else {
                         // -------------------------------------------------------------------------
@@ -626,26 +648,51 @@ fun StartCallHubScreen(
                                 Spacer(Modifier.height(16.dp))
                             }
                         } else {
-                            // Sync status bar with manual sync trigger
+                            // Sync status bar with prominent "Sync now" button
                             item(key = "sync_status_bar") {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            if (syncingContacts) syncProgress ?: "Syncing phone contacts…"
-                                            else "${phoneContacts.size} contacts scanned · ${allMatched.size} on Sarvagyan",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = if (syncingContacts) Brand.HighlightAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                                AppCard {
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                "${phoneContacts.size} contacts scanned · ${allMatched.size} on Sarvagyan",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Brand.PrimaryText,
+                                            )
+                                            if (syncingContacts) {
+                                                Spacer(Modifier.height(4.dp))
+                                                Text(
+                                                    syncProgress ?: "Syncing phone contacts…",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Brand.HighlightAccent,
+                                                )
+                                            }
+                                        }
+                                        Button(
+                                            onClick = { syncPhone() },
+                                            enabled = !syncingContacts,
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Brand.HighlightAccent,
+                                                contentColor = Color(0xFF071B20)
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                        ) {
+                                            if (syncingContacts) {
+                                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF071B20))
+                                            } else {
+                                                Icon(Icons.Filled.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                                Text("Sync now", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                            }
+                                        }
                                     }
-                                    IconButton(onClick = { syncPhone() }, enabled = !syncingContacts) {
-                                        Icon(Icons.Filled.Refresh, contentDescription = "Re-sync contacts", tint = Brand.HighlightAccent)
+                                    if (syncingContacts) {
+                                        Spacer(Modifier.height(8.dp))
+                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Brand.HighlightAccent)
                                     }
                                 }
-                                if (syncingContacts) {
-                                    Spacer(Modifier.height(6.dp))
-                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
-                                }
-                                Spacer(Modifier.height(12.dp))
+                                Spacer(Modifier.height(14.dp))
                             }
 
                             // Search filter box for phone contacts
@@ -663,6 +710,16 @@ fun StartCallHubScreen(
                                     },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Brand.PrimaryText,
+                                        unfocusedTextColor = Brand.PrimaryText,
+                                        focusedBorderColor = Brand.HighlightAccent,
+                                        unfocusedBorderColor = Brand.Borders.copy(alpha = 0.8f),
+                                        focusedLabelColor = Brand.HighlightAccent,
+                                        unfocusedLabelColor = Brand.SecondaryText,
+                                        focusedContainerColor = Brand.CardBg.copy(alpha = 0.85f),
+                                        unfocusedContainerColor = Brand.CardBg.copy(alpha = 0.65f),
+                                    ),
                                 )
                                 Spacer(Modifier.height(14.dp))
                             }
@@ -683,15 +740,17 @@ fun StartCallHubScreen(
                             } else {
                                 items(filteredMatched, key = { "matched_${it.id}" }) { m ->
                                     val num = m.phoneHash?.let { phoneByHash[it] }
-                                    ContactItemRow(
-                                        name = m.name,
-                                        username = m.username,
-                                        avatar = m.avatar,
-                                        language = c.language(m.language)?.name ?: m.language,
-                                        subtitle = num,
-                                        onTapCall = { placeCall(m.id, m.name) },
-                                        onVoicemail = { onVoicemail(m.id, m.name) },
-                                    )
+                                    AppCard(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                        ContactItemRow(
+                                            name = m.name,
+                                            username = m.username,
+                                            avatar = m.avatar,
+                                            language = c.language(m.language)?.name ?: m.language,
+                                            subtitle = num,
+                                            onTapCall = { placeCall(m.id, m.name) },
+                                            onVoicemail = { onVoicemail(m.id, m.name) },
+                                        )
+                                    }
                                 }
                             }
 
@@ -880,33 +939,61 @@ private fun ContactItemRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable { onTapCall() }
-            .padding(vertical = 8.dp, horizontal = 4.dp),
+            .padding(vertical = 4.dp, horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(name, LocalCallColors.current.peer, 42.dp, avatar = avatar, useMain = false)
+        Avatar(name, LocalCallColors.current.peer, 44.dp, avatar = avatar, useMain = false)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (username != null) {
-                    Text("@$username", style = MaterialTheme.typography.bodySmall, color = Brand.HighlightAccent)
-                }
-                if (subtitle != null) {
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Brand.PrimaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
                 if (language != null) {
+                    Spacer(Modifier.width(8.dp))
                     LanguagePill(language, highlighted = false)
                 }
             }
+            Spacer(Modifier.height(3.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (username != null) {
+                    Text(
+                        text = "@$username",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Brand.HighlightAccent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (username != null && subtitle != null) {
+                    Text("·", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
-        IconButton(onClick = onVoicemail) {
-            Icon(Icons.Filled.Voicemail, contentDescription = "Leave voicemail", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Spacer(Modifier.width(8.dp))
         IconButton(
             onClick = onTapCall,
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(42.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .background(Brand.PrimaryAccent),
         ) {
             Icon(Icons.Filled.Call, contentDescription = "Call $name", tint = Brand.ButtonContent, modifier = Modifier.size(20.dp))
@@ -914,7 +1001,7 @@ private fun ContactItemRow(
         if (menu.isNotEmpty()) {
             Box {
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Options")
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     menu.forEach { (label, act) ->

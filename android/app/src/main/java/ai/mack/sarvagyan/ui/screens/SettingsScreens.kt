@@ -12,8 +12,10 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Translate
 import ai.mack.sarvagyan.AppLock
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -25,9 +27,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -43,8 +47,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,26 +89,71 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 
 @Composable
-fun ScreenScaffold(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+fun ScreenScaffold(
+    title: String,
+    onBack: () -> Unit,
+    topBarContent: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
     PostLoginBackground {
-        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Brand.HighlightAccent) }
-                Text(title, style = MaterialTheme.typography.titleLarge, color = Brand.PrimaryText)
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(top = 8.dp)
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Brand.HighlightAccent)
+                }
+                Text(title, style = MaterialTheme.typography.titleLarge, color = Brand.PrimaryText, fontWeight = FontWeight.Bold)
             }
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) { content() }
+            if (topBarContent != null) {
+                topBarContent()
+            }
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            ) {
+                content()
+            }
         }
     }
 }
 
 @Composable
 private fun SettingSwitch(title: String, body: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(role = Role.Switch) { onChange(!checked) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Switch) { onChange(!checked) }
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium, color = Brand.PrimaryText)
             Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Spacer(Modifier.width(16.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Brand.HighlightAccent,
+                checkedBorderColor = Brand.HighlightAccent,
+                uncheckedThumbColor = Brand.HighlightAccent,
+                uncheckedTrackColor = Brand.CardBg,
+                uncheckedBorderColor = Brand.HighlightAccent.copy(alpha = 0.5f),
+            )
+        )
     }
 }
 
@@ -389,10 +442,49 @@ fun SettingsScreen(
                     SettingSwitch("Block screenshots", "Stops screenshots and screen recording of Sarvagyan, and hides it in the recent-apps view.",
                         s.blockScreenshots) { on -> update { it.copy(blockScreenshots = on) } }
                 }
-                SectionTitle("Calls and contacts")
-                AppCard(Modifier.clickable(role = Role.Button, onClick = onContacts)) {
-                    Text("Who can call me: " + if (user?.allowCalls == "everyone") "Everyone" else "My contacts")
-                    Text("Change it, and see blocked people, in Contacts", color = MaterialTheme.colorScheme.primary)
+                SectionTitle("Who can call me")
+                AppCard {
+                    Text(
+                        "Choose who is allowed to place a direct call to you on Sarvagyan.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Brand.PrimaryBg.copy(alpha = 0.6f))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("My contacts", "Everyone").forEachIndexed { index, option ->
+                            val isCurrent = if (index == 0) (user?.allowCalls != "everyone") else (user?.allowCalls == "everyone")
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isCurrent) Brand.HighlightAccent else Color.Transparent)
+                                    .clickable {
+                                        scope.launch {
+                                            try {
+                                                c.api.updateMe(allowCalls = if (index == 0) "contacts" else "everyone")
+                                                c.user.value = c.api.me()
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    option,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isCurrent) Color(0xFF071B20) else Brand.PrimaryText
+                                )
+                            }
+                        }
+                    }
                 }
                 SectionTitle("Call transcripts")
                 SettingSwitch("Save transcripts on this phone", "Off by default. Saved only on this phone, encrypted, never on our server. Audio is never recorded.", s.saveTranscripts) { on ->

@@ -119,11 +119,11 @@ fun PostLoginBackground(
             contentScale = ContentScale.Crop,
             alignment = Alignment.Center,
         )
-        // Subtle dark overlay ensuring crisp text readability
+        // Light subtle overlay so wallpaper remains light, vibrant and colorful
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brand.PrimaryBg.copy(alpha = 0.42f))
+                .background(Brand.PrimaryBg.copy(alpha = 0.16f))
         )
         content()
     }
