@@ -77,8 +77,18 @@ def test_push_notifications_and_voicemail_missed_call(env) -> None:
 
     # Missed call + voicemail -> push body is "Voicemail" and Bob's missed-call history has has_voicemail=True
     env.client.post("/v1/contacts", json={"user_id": a["id"]}, headers=env.auth(tb))
+    # Alice's app is closed: she gets "Bob added you" as a push
+    assert [(p[0], p[1], p[3]["type"]) for p in sent_pushes] == [(["fcm_tok_alice_12345"], "Bob", "contact_added")]
+    sent_pushes.clear()
     call = env.client.post("/v1/calls/direct", json={"to": b["id"], "language": "en-IN"}, headers=env.auth(ta)).json()
+    # Bob's app is closed: the call rings his phone through a push, so Alice hears "ringing", not "unavailable"
+    assert call["call_state"] == "ringing" and call["reachable"] is True
+    assert [(p[0], p[3]["type"], p[3]["call_id"]) for p in sent_pushes] == [(["fcm_tok_bob_12345"], "incoming_call", call["call_id"])]
+    sent_pushes.clear()
     env.client.post(f"/v1/calls/{call['call_id']}/cancel", headers=env.auth(ta))
+    # the caller gave up before Bob opened the app: a missed-call push
+    assert [(p[1], p[2], p[3]["type"]) for p in sent_pushes] == [("Missed call", "Alice", "missed_call")]
+    sent_pushes.clear()
 
     pcm = b"SAY:en-IN:Call me back".ljust(32000, b"\x00")
     vm_resp = env.client.post(f"/v1/chat/conversations/{cid}/voice?language=en-IN&tag=voicemail", content=pcm, headers=env.auth(ta))

@@ -546,13 +546,19 @@ fun SettingsScreen(
                 AppCard {
                     Text(if (granted) "Notifications are allowed" else "Notifications are off",
                         style = MaterialTheme.typography.titleMedium)
-                    Text("Sarvagyan uses them to ring for incoming calls and to show that the microphone is on during a call.",
+                    Text("Sarvagyan notifies you of incoming and missed calls, new messages and voicemails, and shows that the " +
+                        "microphone is on during a call. Each kind can be turned off in Android's notification settings.",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
                     SecondaryButton("Open notification settings", {
                         context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                             .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
                     }, Modifier.fillMaxWidth())
+                }
+                SectionTitle("Contacts")
+                SettingSwitch("When someone adds me", "Get a notification when someone adds you as a contact, so you can add them back.",
+                    user?.notifyContactAdded ?: true) { on ->
+                    scope.launch { runCatching { c.api.updateMe(notifyContactAdded = on) }.onSuccess { c.user.value = it } }
                 }
             }
             "storage" -> {
@@ -716,7 +722,7 @@ val settingsGroups = listOf(
     SettingsGroup("language", "Language and voice", "Your language, voice and speed", Icons.Filled.Translate),
     SettingsGroup("calls", "Calls", "Translated voice, speaker, subtitles", Icons.Filled.Call),
     SettingsGroup("chats", "Chats", "Read receipts, chat history", Icons.AutoMirrored.Filled.Chat),
-    SettingsGroup("notifications", "Notifications", "Incoming calls and call alerts", Icons.Filled.Notifications),
+    SettingsGroup("notifications", "Notifications", "Calls, messages, missed calls, new contacts", Icons.Filled.Notifications),
     SettingsGroup("storage", "Storage and data", "What is kept on this phone and on our server", Icons.Filled.Storage),
     SettingsGroup("appearance", "Appearance", "Dark, light or system theme", Icons.Filled.Palette),
     SettingsGroup("help", "Help and about", "How it works, privacy policy, diagnostics", Icons.AutoMirrored.Filled.Help),

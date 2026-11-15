@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS message_translations (
 # columns added after the first release: (table, column, definition), added to existing databases on start
 _COLUMNS = [
     ("users", "read_receipts", "INTEGER NOT NULL DEFAULT 1"),
+    ("users", "notify_contact_added", "INTEGER NOT NULL DEFAULT 1"),
     ("users", "chat_retention_days", "INTEGER NOT NULL DEFAULT 30"),
     ("users", "phone_hash", "TEXT"),
     ("users", "username_norm", "TEXT"),
@@ -206,7 +207,7 @@ class Database:
             fields["username_norm"] = fields["username"].lower()
         allowed = {k: v for k, v in fields.items()
                    if k in ("display_name", "language", "username", "username_norm", "avatar", "allow_calls", "read_receipts",
-                            "chat_retention_days", "phone_hash") and v is not None}  # fmt: skip
+                            "chat_retention_days", "phone_hash", "notify_contact_added") and v is not None}  # fmt: skip
         if allowed:
             sets = ", ".join(f"{k} = ?" for k in allowed)
             self._exec(f"UPDATE users SET {sets} WHERE id = ?", (*allowed.values(), uid))

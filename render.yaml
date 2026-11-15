@@ -25,6 +25,8 @@ services:
         sync: false
       - key: MYMEMORY_EMAIL
         sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON  # push notifications when the app is closed (Firebase service account JSON)
+        sync: false
       - key: HF_TOKEN  # translation by an LLM (Hugging Face Inference Providers); needs credit on the account
         sync: false
       - key: TRANSLATE_LLM_URL  # optional: another OpenAI-compatible API instead of Hugging Face

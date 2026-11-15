@@ -178,10 +178,11 @@ class ApiClient(
     suspend fun updateMe(
         name: String? = null, language: String? = null, username: String? = null, avatar: String? = null,
         allowCalls: String? = null, readReceipts: Boolean? = null, chatRetentionDays: Int? = null,
-        phoneHash: String? = null,
+        phoneHash: String? = null, notifyContactAdded: Boolean? = null,
     ): User = request("PATCH", "/v1/me", obj("display_name" to name, "language" to language, "username" to username,
         "avatar" to avatar, "allow_calls" to allowCalls, "read_receipts" to readReceipts,
-        "chat_retention_days" to chatRetentionDays, "phone_hash" to phoneHash), User.serializer())
+        "chat_retention_days" to chatRetentionDays, "phone_hash" to phoneHash,
+        "notify_contact_added" to notifyContactAdded), User.serializer())
 
     suspend fun uploadAvatar(imageBytes: ByteArray): User =
         send("POST", baseUrl().trimEnd('/') + "/v1/me/avatar",

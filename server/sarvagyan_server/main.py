@@ -124,34 +124,64 @@ class Services:
                     with contextlib.suppress(OSError):
                         (self.avatar_dir / f"{fid}{suffix}.webp").unlink(missing_ok=True)
 
-    async def _default_push_sender(self, tokens: list[str], title: str, body: str, data: dict[str, str]) -> None:
+    @property
+    def push_enabled(self) -> bool:
+        """Push needs Firebase (FIREBASE_SERVICE_ACCOUNT_JSON), or a test's own sender."""
+        custom = getattr(self.push_sender, "__func__", None) is not Services._default_push_sender
+        return custom or bool(os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip())
+
+    async def push_to_user(self, user_id: str, title: str, body: str, data: dict[str, str]) -> bool:
+        """Push to every phone of a user (when the app is closed, only this can wake it). True if it has a phone."""
+        tokens = self.db.get_device_tokens([user_id]).get(user_id) or []
+        if not tokens or not self.push_enabled:
+            return False
+        await self.push_sender(tokens, title, body, data)
+        return True
+
+    async def _fcm_token(self) -> tuple[str, str] | None:
+        """(OAuth access token, Firebase project id), cached until five minutes before it expires."""
         sa_raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
-        if not sa_raw or not tokens:
+        if not sa_raw:
+            return None
+        cached = getattr(self, "_fcm_cache", None)
+        if cached and cached[2] > time.time() + 300:
+            return cached[0], cached[1]
+        import google.auth.transport.requests
+        from google.oauth2 import service_account
+        sa_info = json.loads(sa_raw) if sa_raw.startswith("{") else json.loads(Path(sa_raw).read_text())
+        creds = service_account.Credentials.from_service_account_info(
+            sa_info, scopes=["https://www.googleapis.com/auth/firebase.messaging"])
+        await asyncio.to_thread(creds.refresh, google.auth.transport.requests.Request())
+        expiry = creds.expiry.timestamp() if creds.expiry else time.time() + 1800
+        self._fcm_cache = (creds.token, sa_info["project_id"], expiry)
+        return creds.token, sa_info["project_id"]
+
+    async def _default_push_sender(self, tokens: list[str], title: str, body: str, data: dict[str, str]) -> None:
+        """Firebase Cloud Messaging HTTP v1. Data-only and high priority: the app builds the notification itself
+        (ringing call, message, missed call, new contact), also when it was closed."""
+        if not tokens:
             return
         try:
-            import google.auth.transport.requests
-            from google.oauth2 import service_account
-            sa_info = json.loads(sa_raw) if sa_raw.startswith("{") else json.loads(Path(sa_raw).read_text())
-            creds = service_account.Credentials.from_service_account_info(
-                sa_info, scopes=["https://www.googleapis.com/auth/firebase.messaging"]
-            )
-            creds.refresh(google.auth.transport.requests.Request())
-            project_id = sa_info["project_id"]
+            auth = await self._fcm_token()
+            if auth is None:
+                return
+            token, project_id = auth
             url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
-            headers = {"Authorization": f"Bearer {creds.token}"}
+            payload = {k: str(v) for k, v in {**data, "title": title, "body": body}.items() if v is not None}
+            ttl = "40s" if data.get("type") == "incoming_call" else "86400s"
             async with httpx.AsyncClient(timeout=8.0) as client:
-                await asyncio.gather(*(
-                    client.post(url, headers=headers, json={
-                        "message": {
-                            "token": tok,
-                            "notification": {"title": title, "body": body},
-                            "data": data,
-                            "android": {"priority": "HIGH", "notification": {"channel_id": "chat_messages"}},
-                        }
-                    }) for tok in tokens
+                results = await asyncio.gather(*(
+                    client.post(url, headers={"Authorization": f"Bearer {token}"}, json={
+                        "message": {"token": tok, "data": payload, "android": {"priority": "HIGH", "ttl": ttl}}})
+                    for tok in tokens
                 ), return_exceptions=True)
+            for r in results:
+                if isinstance(r, httpx.Response) and r.status_code >= 400:
+                    log.warning("fcm push failed status=%s", r.status_code)
+                elif isinstance(r, Exception):
+                    log.warning("fcm push error: %s", type(r).__name__)
         except Exception as exc:
-            log.warning("fcm push error: %s", exc)
+            log.warning("fcm push error: %s", type(exc).__name__)
 
     def _spawn_bg(self, coro) -> asyncio.Task:
         t = asyncio.create_task(coro)
@@ -366,6 +396,22 @@ class Services:
             self._call_acks[ack_id]["acked"] = True
         log.info("call_state_ack user=%s call=%s state=%s ack_id=%s", user_id[:8], call_id[:8], state, ack_id)
 
+    async def resend_ringing(self, user_id: str, ws) -> None:
+        """A phone that connects while it is being rung (opened from the call push) still sees the call."""
+        for cid, call in list(self.calls.items()):
+            if (call.get("ring") or {}).get("to") != user_id:
+                continue
+            host = self.db.get_user(call["host"])
+            if host is None:
+                continue
+            left = max(1, int(self.settings.ring_timeout_s - (time.time() - call["created"])))
+            with contextlib.suppress(Exception):
+                await ws.send_text(json.dumps({
+                    "type": "incoming_call", "call_id": cid, "expires_in": left,
+                    "from": {"id": host["id"], "name": host["display_name"], "username": host.get("username"),
+                             "language": call["participants"].get(host["id"], "en-IN"), "avatar": host.get("avatar")},
+                }, ensure_ascii=False))  # fmt: skip
+
     def start_ring_timer(self, cid: str) -> None:
         async def expire() -> None:
             await asyncio.sleep(self.settings.ring_timeout_s)
@@ -395,12 +441,18 @@ class Services:
             await self.emit_call_state(call["host"], cid, db_outcome, peer_id=callee, peer_name=peer_name)
         else:
             host = self.db.get_user(call["host"])
-            await self.emit_call_state(callee, cid, "cancelled", peer_id=call["host"],
-                                       peer_name=host["display_name"] if host else None)  # fmt: skip
+            host_name = host["display_name"] if host else "Someone"
+            reached, _ = await self.emit_call_state(callee, cid, "cancelled", peer_id=call["host"], peer_name=host_name)
+            if not reached:  # the caller gave up before the app opened: still a missed call
+                await self.push_to_user(callee, "Missed call", host_name,
+                                        {"type": "missed_call", "call_id": cid, "user_id": call["host"]})  # fmt: skip
         if outcome in ("missed", "no_answer"):
             host = self.db.get_user(call["host"])
-            await self.emit_call_state(callee, cid, "no_answer", peer_id=call["host"],
-                                       peer_name=host["display_name"] if host else None)  # fmt: skip
+            host_name = host["display_name"] if host else "Someone"
+            reached, _ = await self.emit_call_state(callee, cid, "no_answer", peer_id=call["host"], peer_name=host_name)
+            if not reached:  # app closed: a push (with its socket open, the app shows the missed call itself)
+                await self.push_to_user(callee, "Missed call", host_name,
+                                        {"type": "missed_call", "call_id": cid, "user_id": call["host"]})  # fmt: skip
         self.db.mark_ended(cid, 0, outcome=db_outcome)
         self.calls.pop(cid, None)
         self.by_code.pop(call["code"], None)
@@ -506,7 +558,8 @@ def create_app(services: Services | None = None) -> FastAPI:
         return {"id": u["id"], "display_name": u["display_name"], "username": u.get("username"), "email": u["email"],
                 "avatar": u.get("avatar"), "is_demo": bool(u["is_demo"]), "language": u["language"],
                 "allow_calls": u.get("allow_calls") or "contacts", "read_receipts": bool(u.get("read_receipts", 1)),
-                "chat_retention_days": int(u.get("chat_retention_days") or 30)}  # fmt: skip
+                "chat_retention_days": int(u.get("chat_retention_days") or 30),
+                "notify_contact_added": bool(u.get("notify_contact_added", 1))}  # fmt: skip
 
     def session(u: dict, s: Services, device: str | None) -> dict:
         refresh = new_refresh_token()
@@ -689,6 +742,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     class MeIn(BaseModel):
         allow_calls: str | None = Field(default=None, pattern="^(everyone|contacts)$")
         read_receipts: bool | None = None
+        notify_contact_added: bool | None = None
         chat_retention_days: int | None = Field(default=None)
         display_name: str | None = Field(default=None, max_length=60)
         language: str | None = None
@@ -729,10 +783,12 @@ def create_app(services: Services | None = None) -> FastAPI:
         if body.chat_retention_days is not None and body.chat_retention_days not in (7, 30, 365):
             raise HTTPException(422, "Chat history can be kept for 7, 30 or 365 days.")
         receipts = None if body.read_receipts is None else int(body.read_receipts)
+        notify_added = None if body.notify_contact_added is None else int(body.notify_contact_added)
         p_hash = body.phone_hash.strip().lower() if body.phone_hash else None
         return public_user(s.db.update_user(user["id"], display_name=clean_name, language=body.language,
                                             username=uname, avatar=clean_avatar, allow_calls=body.allow_calls,
                                             read_receipts=receipts, chat_retention_days=body.chat_retention_days,
+                                            notify_contact_added=notify_added,
                                             phone_hash=p_hash))  # fmt: skip
 
     @app.post("/v1/me/avatar", dependencies=[Depends(rate_limit("avatar-upload", 20, 3600))])
@@ -929,14 +985,22 @@ def create_app(services: Services | None = None) -> FastAPI:
         return {"contacts": [contact_out(u) for u in s.db.contacts(user["id"])]}
 
     @app.post("/v1/contacts")
-    def add_contact(body: AddContactIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
+    async def add_contact(body: AddContactIn, user: dict = Depends(current_user), s: Services = Depends(svc)) -> dict:
         other = (s.db.get_user_by_username(body.username.strip().lstrip("@")) if body.username
                  else s.db.get_user(body.user_id) if body.user_id else None)  # fmt: skip
         if other is None or s.db.either_blocked(user["id"], other["id"]):
             raise HTTPException(404, "No one with that username.")
         if other["id"] == user["id"]:
             raise HTTPException(422, "That's you.")
+        is_new = not s.db.is_contact(user["id"], other["id"])
         s.db.add_contact(user["id"], other["id"])
+        if is_new and other.get("notify_contact_added", 1):
+            # tell them (they can add back); a push when their app is closed. Only once per pair.
+            event = {"type": "contact_added", "from": contact_out(user),
+                     "is_contact": s.db.is_contact(other["id"], user["id"])}  # fmt: skip
+            if not await s.notify_user(other["id"], event):
+                await s.push_to_user(other["id"], user["display_name"], "Added you as a contact on Sarvagyan",
+                                     {"type": "contact_added", "user_id": user["id"]})  # fmt: skip
         return {"contact": contact_out(other)}
 
     @app.delete("/v1/contacts/{contact_id}")
@@ -1036,6 +1100,10 @@ def create_app(services: Services | None = None) -> FastAPI:
             "type": "incoming_call", "call_id": cid, "expires_in": s.settings.ring_timeout_s,
             "from": {"id": user["id"], "name": user["display_name"], "username": user.get("username"),
                      "language": body.language, "avatar": user.get("avatar")}})  # fmt: skip
+        if not reachable:  # app closed: wake the phone with a push; it rings and joins when opened
+            reachable = await s.push_to_user(callee["id"], user["display_name"], "Incoming call", {
+                "type": "incoming_call", "call_id": cid, "user_id": user["id"], "language": body.language,
+                "expires_in": str(s.settings.ring_timeout_s)})  # fmt: skip
         if reachable:
             await s.emit_call_state(user["id"], cid, "ringing", peer_id=callee["id"], peer_name=callee["display_name"])
         else:
@@ -1506,6 +1574,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         await ws.accept(subprotocol=subprotocol)
         ws.session_id = user["session_id"]
         s.chat_sockets[user["id"]].add(ws)
+        await s.resend_ringing(user["id"], ws)
         try:
             while True:
                 msg = await ws.receive()

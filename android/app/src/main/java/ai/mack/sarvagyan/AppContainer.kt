@@ -68,6 +68,8 @@ class AppContainer(private val context: Context) {
     val incomingCall = MutableStateFlow<IncomingCall?>(null)
     val appSocket = AppSocket(http, json, api)
     private val ringer = Ringer(context)
+    val notifier = Notifier(context)
+    private val incomingIds = java.util.Collections.synchronizedSet(mutableSetOf<String>()) // calls that rang me
 
     init {
         // the always-on connection runs while someone is signed in; incoming calls arrive through it
@@ -183,12 +185,55 @@ class AppContainer(private val context: Context) {
         }
     }
 
+    /** Live events that aren't about calls: notify unless it's my own message or the chat already on screen. */
+    private fun onNotifyEvent(ev: JsonObject): Boolean {
+        when (ev.str("type")) {
+            "message" -> {
+                val m = ev.objOrNull("message") ?: return true
+                val cid = ev.str("conversation_id") ?: m.str("conversation_id")
+                if (m.str("sender_id") == user.value?.id || (cid != null && cid == appSocket.focusedConversation)) return true
+                val body = when {
+                    m.str("tag") == "voicemail" -> "Voicemail"
+                    m.str("audio_id") != null && (m.str("translated_text") ?: "").let { it.isBlank() || it == "[Voice Message]" } -> "Voice message"
+                    else -> m.str("translated_text")?.takeIf { it.isNotBlank() } ?: m.str("original_text") ?: "New message"
+                }
+                notifier.message(cid, m.str("sender_name") ?: "New message", body)
+            }
+            "contact_added" -> {
+                val from = ev.objOrNull("from") ?: return true
+                if (user.value?.notifyContactAdded != false) {
+                    notifier.contactAdded(from.str("id") ?: return true, from.str("name") ?: "Someone")
+                }
+            }
+            else -> return false
+        }
+        return true
+    }
+
+    /** A push woke the phone for a call: ring now; the app socket then delivers the full call when it connects. */
+    fun ringFromPush(callId: String, fromId: String, fromName: String, language: String, expiresS: Int) {
+        if (inCall() || incomingCall.value != null) return
+        incomingIds.add(callId)
+        incomingCall.value = IncomingCall(callId, fromId, fromName, null, language, expiresS)
+        ringer.start(fromName, expiresS * 1000L)
+        scope.launch { // nobody answered: clear the ringing state (the server sends the missed call)
+            kotlinx.coroutines.delay(expiresS * 1000L + 2000L)
+            if (incomingCall.value?.callId == callId) { incomingCall.value = null; ringer.stop() }
+        }
+    }
+
+    private fun missed(callId: String, name: String?) {
+        if (incomingIds.remove(callId) && answeringCallId != callId) notifier.missedCall(callId, name ?: "Someone")
+    }
+
     private fun onAppEvent(ev: JsonObject) {
+        if (onNotifyEvent(ev)) return
         val callId = ev.str("call_id") ?: return
         val ackId = ev.str("ack_id")
         when (ev.str("type")) {
             "incoming_call" -> {
                 sendCallAck(callId, "ringing", ackId)
+                incomingIds.add(callId)
                 if (inCall()) {
                     Log.i("CallLifecycle", "state=ended callId=$callId reason=busy_auto_decline")
                     scope.launch { runCatching { api.declineCall(callId, reason = "busy") } }
@@ -204,6 +249,7 @@ class AppContainer(private val context: Context) {
             "call_state" -> {
                 val state = ev.str("state") ?: return
                 sendCallAck(callId, state, ackId)
+                if (state == "cancelled" || state == "no_answer") missed(callId, ev.str("peer_name"))
                 if ((state == "cancelled" || state == "no_answer") && incomingCall.value?.callId == callId) {
                     Log.i("CallLifecycle", "state=ended direction=incoming callId=$callId reason=$state")
                     incomingCall.value = null

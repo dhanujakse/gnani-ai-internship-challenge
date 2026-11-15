@@ -23,7 +23,12 @@ class AppSocket(private val http: OkHttpClient, private val json: Json, private 
 
     fun send(msg: JsonObject): Boolean = activeSocket?.send(msg) == true
 
+    /** The chat on screen right now: its messages need no notification. */
+    @Volatile var focusedConversation: String? = null
+        private set
+
     fun sendChatFocus(conversationId: String?) {
+        focusedConversation = conversationId
         val obj = kotlinx.serialization.json.buildJsonObject {
             put("type", kotlinx.serialization.json.JsonPrimitive("chat_focus"))
             if (conversationId != null) put("conversation_id", kotlinx.serialization.json.JsonPrimitive(conversationId))
@@ -49,7 +54,11 @@ class AppSocket(private val http: OkHttpClient, private val json: Json, private 
             try {
                 socket.connect(api.appSocketUrl(), token).collect { ev ->
                     when (ev) {
-                        SocketEvent.Open -> { connected = true; backoffMs = 1_000L }
+                        SocketEvent.Open -> {
+                            connected = true
+                            backoffMs = 1_000L
+                            focusedConversation?.let { sendChatFocus(it) } // the server forgets it per connection
+                        }
                         is SocketEvent.Message -> _events.tryEmit(ev.json)
                         else -> Unit
                     }

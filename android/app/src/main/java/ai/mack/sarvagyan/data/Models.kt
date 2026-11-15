@@ -16,6 +16,7 @@ data class User(
     @SerialName("allow_calls") val allowCalls: String = "contacts", // who can call me: contacts | everyone
     @SerialName("read_receipts") val readReceipts: Boolean = true,
     @SerialName("chat_retention_days") val chatRetentionDays: Int = 30,
+    @SerialName("notify_contact_added") val notifyContactAdded: Boolean = true,
 )
 
 @Serializable

@@ -663,6 +663,7 @@ fun ChatConversationScreen(
 
     LaunchedEffect(conversationId) {
         c.appSocket.sendChatFocus(conversationId)
+        c.notifier.clearMessages(conversationId)
         runCatching {
             conversation = c.api.conversation(conversationId).conversation
         }
