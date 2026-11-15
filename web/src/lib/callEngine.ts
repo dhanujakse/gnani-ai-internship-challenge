@@ -271,7 +271,8 @@ export class CallEngine {
       next[i] = turn;
       this.set({ turns: next });
     } else {
-      this.set({ turns: [...turns, turn].sort((a, b) => a.seq - b.seq) });
+      // arrival order = the order people spoke (seq counts each speaker separately, so it can't order a conversation)
+      this.set({ turns: [...turns, turn] });
     }
   }
 

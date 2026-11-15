@@ -299,7 +299,7 @@ function TurnBubble({ t, mine, peerName, languages, onRetry }: { t: Turn; mine: 
     <div className={`max-w-[88%] rounded-md border p-3.5 sm:max-w-[80%] ${mine ? "ml-auto border-highlight/25 bg-elevated" : "mr-auto border-line bg-card"}`}>
       <div className="mb-1 flex items-center gap-2 text-[12px] font-medium">
         <span className={mine ? "text-highlight" : "text-gold"}>{who}</span>
-        {t.delayMs != null && t.stage !== "failed" && (
+        {t.delayMs != null && t.delayMs > 0 && t.stage !== "failed" && (
           <span className={t.delayMs > 3000 ? "text-warning" : "text-low"}>
             {(t.delayMs / 1000).toFixed(1)} s{t.delayMs > 3000 ? " · translation was slow" : ""}
           </span>
