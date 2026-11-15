@@ -1,6 +1,8 @@
 package ai.mack.sarvagyan.call
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import android.util.Log
 import ai.mack.sarvagyan.data.ApiClient
 import ai.mack.sarvagyan.data.AppSettings
@@ -107,6 +109,21 @@ class CallSession(
     private var socketJob: Job? = null
     private var ended = false
     private var reconnectAttempt = 0
+    private var lostSinceMs = 0L // when the server connection was lost (0 = connected)
+    private var reconnectJob: Job? = null
+    @Volatile private var currentNetwork: Network? = null
+    private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        // the internet is back (or we moved Wi-Fi <-> mobile data): reconnect now instead of waiting for the backoff
+        // (registering reports the current network first; a different one later means the old socket is dead)
+        override fun onAvailable(network: Network) {
+            val switched = currentNetwork != null && currentNetwork != network
+            currentNetwork = network
+            if (ended) return
+            if (switched && lostSinceMs == 0L) lostSinceMs = System.currentTimeMillis()
+            if (lostSinceMs != 0L) scope.launch { reconnectNow() }
+        }
+    }
     private var everConnected = false // after the first connection, re-offers restart ICE (network change)
 
     fun start(initialRoute: AudioRoute? = null) {
@@ -125,6 +142,7 @@ class CallSession(
         player.volume = 1f
         Log.i("CallLifecycle", "state=connecting callId=${info.callId} route=${router.current()}")
         connectSocket()
+        runCatching { connectivity?.registerDefaultNetworkCallback(networkCallback) }
         scope.launch { // stats + keepalive
             while (isActive) {
                 delay(3000)
@@ -137,7 +155,15 @@ class CallSession(
     private fun connectSocket() {
         socketJob?.cancel()
         socketJob = scope.launch {
-            val token = api.freshToken() ?: return@launch fail("Please sign in again.")
+            // Offline, renewing the sign-in throws (no network): that's a lost connection to retry, not a sign-out.
+            val token = try {
+                api.freshToken()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.i("CallLifecycle", "state=reconnecting callId=${info.callId} token_refresh_failed=${e.javaClass.simpleName}")
+                return@launch reconnect()
+            } ?: return@launch fail("Please sign in again.")
             socket.connect(api.webSocketUrl(info.callId), token).collect { ev -> onSocket(ev) }
         }
     }
@@ -156,6 +182,7 @@ class CallSession(
         when (ev) {
             SocketEvent.Open -> {
                 reconnectAttempt = 0
+                lostSinceMs = 0L
                 socket.send(hello())
                 _state.update { it.copy(banner = null) }
             }
@@ -173,15 +200,32 @@ class CallSession(
         }
     }
 
+    /**
+     * Keep trying for as long as the server keeps our seat (server GRACE_S), every 1, 2, 4, 4… seconds, and at
+     * once when the phone gets a network again. A short outage resumes the same call.
+     */
     private fun reconnect() {
         if (ended) return
+        val now = System.currentTimeMillis()
+        if (lostSinceMs == 0L) lostSinceMs = now
+        if (now - lostSinceMs > RECONNECT_WINDOW_MS) return fail("Lost connection to the server.")
         reconnectAttempt++
-        if (reconnectAttempt > 6) return fail("Lost connection to the server.")
+        Log.i("CallLifecycle", "state=reconnecting callId=${info.callId} attempt=$reconnectAttempt")
         _state.update { it.copy(status = CallStatus.Reconnecting, banner = Banner("Connection lost — reconnecting…")) }
-        scope.launch {
-            delay(minOf(1000L shl (reconnectAttempt - 1), 8000L))
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            delay(minOf(1000L shl minOf(reconnectAttempt - 1, 2), 4000L))
             if (!ended) connectSocket()
         }
+    }
+
+    private fun reconnectNow() {
+        if (ended || lostSinceMs == 0L) return
+        reconnectJob?.cancel()
+        reconnectAttempt = 0
+        Log.i("CallLifecycle", "state=reconnecting callId=${info.callId} network_available=true")
+        _state.update { it.copy(status = CallStatus.Reconnecting, banner = Banner("Connection lost — reconnecting…")) }
+        connectSocket()
     }
 
     private fun onMessage(m: JsonObject) {
@@ -415,6 +459,7 @@ class CallSession(
     private fun teardown() {
         ended = true
         mic.enabled = false
+        runCatching { connectivity?.unregisterNetworkCallback(networkCallback) }
         scope.launch {
             delay(300) // let the "leave" frame go out
             socket.close()
@@ -424,5 +469,9 @@ class CallSession(
             router.end()
             scope.cancel()
         }
+    }
+
+    private companion object {
+        const val RECONNECT_WINDOW_MS = 85_000L // a little under the server's 90 s grace
     }
 }

@@ -35,7 +35,14 @@ class AppSocket(private val http: OkHttpClient, private val json: Json, private 
     suspend fun run() {
         var backoffMs = 1_000L
         while (true) {
-            val token = api.freshToken()
+            // offline, renewing the sign-in throws: wait and try again rather than stopping for good
+            val token = try {
+                api.freshToken()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
             if (token == null) { delay(5_000); continue }
             val socket = CallSocket(http, json)
             activeSocket = socket
@@ -53,7 +60,7 @@ class AppSocket(private val http: OkHttpClient, private val json: Json, private 
                 socket.close()
             }
             delay(backoffMs)
-            backoffMs = (backoffMs * 2).coerceAtMost(30_000L)
+            backoffMs = (backoffMs * 2).coerceAtMost(10_000L)
         }
     }
 }

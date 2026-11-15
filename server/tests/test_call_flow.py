@@ -209,6 +209,16 @@ def test_auto_detect_uses_detected_language(env) -> None:
         assert done["source_lang"] == "hi-IN" and env.tr.calls[-1] == ("नमस्ते", "hi-IN", "en-IN")
 
 
+def test_fixed_language_ignores_the_detected_language(env) -> None:
+    """Prisma judges detected_language_code from the script: a Tamil speaker's English words come back as en-IN.
+    Without auto-detect, the speaker's chosen language stays the source for the whole call."""
+    with two_party(env) as (_, (a, _ua), (b, _ub)):
+        say(a, "en-IN", "நான் office la irukken")
+        done = until(b, lambda m: m["type"] == "utterance" and m["stage"] == "done")
+        assert done["source_lang"] == "ta-IN"
+        assert env.tr.calls[-1] == ("நான் office la irukken", "ta-IN", "en-IN")  # translated, not passed through
+
+
 def test_stt_auth_failure_is_reported(env) -> None:
     env.rec.fail_with = ProviderError("gnani-stt", "auth", "Gnani rejected the API key (401). Check GNANI_API_KEY.")
     ta, _ = env.guest("A")

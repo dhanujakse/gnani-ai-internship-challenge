@@ -11,6 +11,7 @@ import { WS_URL } from "./api";
 export const SAMPLE_RATE = 16000;
 const FRAME_SAMPLES = 512; // 1,024 bytes
 const PROTOCOL = "sarvagyan.v1";
+const RECONNECT_WINDOW_MS = 85_000; // a little under the server's 90 s grace
 
 export type Stage = "listening" | "recognized" | "translating" | "translated" | "speaking" | "done" | "failed" | "skipped";
 
@@ -84,6 +85,17 @@ export class CallEngine {
   private playhead = 0;
   private leaving = false;
   private retries = 0;
+  private lostSince = 0; // when the server connection was lost (0 = connected)
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  // the browser is back online: rejoin now instead of waiting for the next retry
+  private onOnline = () => {
+    if (this.leaving || this.lostSince === 0 || this.ws) return;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.openSocket();
+  };
+  // gone offline: the socket can take a while to notice, so drop it now and start retrying
+  private onOffline = () => this.ws?.close();
   private ping: ReturnType<typeof setInterval> | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -111,6 +123,8 @@ export class CallEngine {
     this.ctx = ctx;
     await ctx.resume().catch(() => undefined);
     if (this.leaving) return; // closed while the audio device was starting
+    window.addEventListener("online", this.onOnline);
+    window.addEventListener("offline", this.onOffline);
     this.openSocket();
     await this.startMic();
   }
@@ -124,6 +138,7 @@ export class CallEngine {
     this.ws = ws;
     ws.onopen = () => {
       this.retries = 0;
+      this.lostSince = 0;
       this.renewed = false;
       ws.send(JSON.stringify({ type: "hello", language: this.language, muted: this.state.muted }));
       this.ping ??= setInterval(() => this.sendJson({ type: "ping", t: Date.now() }), 20000);
@@ -147,20 +162,33 @@ export class CallEngine {
         if (this.renewed) return this.finish("Please sign in again.");
         this.renewed = true; // access tokens last 15 minutes: renew once and rejoin
         this.set({ status: "reconnecting" });
-        this.renewAuth().then((ok) => (ok && !this.leaving ? this.openSocket() : this.finish("Please sign in again.")));
+        this.renewAuth().then(
+          (ok) => (ok && !this.leaving ? this.openSocket() : this.finish("Please sign in again.")),
+          () => this.retryLater(), // offline: renewing failed on the network, not the sign-in
+        );
         return;
       }
       if (ev.code === 4404) return this.finish("That call has ended, or the invitation code is no longer valid.");
       if (ev.code === 4400) return this.finish("Call failed");
-      // the server keeps our seat for 30 s: try to come back, like the app does
-      if (this.retries < 4) {
-        this.retries += 1;
-        this.set({ status: "reconnecting" });
-        setTimeout(() => !this.leaving && this.openSocket(), 1500 * this.retries);
-      } else {
-        this.finish("No connection to the server. Check your internet and try again.");
-      }
+      this.retryLater();
     };
+  }
+
+  /** The server keeps our seat for 90 s: keep trying for 85 s (every 1, 2, 4, 4… s), like the app does. */
+  private retryLater() {
+    if (this.leaving) return;
+    const now = Date.now();
+    if (this.lostSince === 0) this.lostSince = now;
+    if (now - this.lostSince > RECONNECT_WINDOW_MS) {
+      return this.finish("No connection to the server. Check your internet and try again.");
+    }
+    this.retries += 1;
+    this.set({ status: "reconnecting" });
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (!this.leaving) this.openSocket();
+    }, Math.min(1000 * 2 ** (this.retries - 1), 4000));
   }
 
   private sendJson(o: object) {
@@ -369,6 +397,12 @@ export class CallEngine {
 
   cleanup() {
     this.leaving = true;
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.onOnline);
+      window.removeEventListener("offline", this.onOffline);
+    }
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     if (this.ping) clearInterval(this.ping);
     this.ping = null;
     try {

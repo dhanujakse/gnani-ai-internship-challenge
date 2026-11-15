@@ -36,7 +36,7 @@ MAX_AUDIO_AGE_S = 12.0  # translated audio older than this is skipped (text stil
 ECHO_WINDOW_S = 20.0
 ECHO_SIMILARITY = 0.72
 STT_ROTATE_S = 14 * 60  # Gnani sessions are capped at 15 min; rotate proactively
-GRACE_S = 30.0  # keep a dropped participant's seat this long (network blips)
+GRACE_S = 90.0  # keep a dropped participant's seat this long (network outages; the app retries for 85 s)
 FRAME_QUEUE = 160  # ~5 s of 32 ms frames
 STAGES = ("listening", "recognized", "translating", "translated", "speaking", "done", "failed", "skipped")
 STAGE_RANK = {s: i for i, s in enumerate(STAGES)}
@@ -341,7 +341,12 @@ class SpeakerPipeline:
                                       ProviderError("server", "quota", "Daily translation limit reached for this account."))  # fmt: skip
                 return
             self._seq += 1
-            source = ev.language if ev.language in _supported() else self.speaker.language
+            # The speaker's chosen language is fixed for the call (until they change it in the call). Prisma's
+            # detected_language_code is judged from the transcript's script, so a Tamil sentence with a few English
+            # words can come back as en-IN: trust it only when the speaker asked for auto-detect.
+            source = self.speaker.language
+            if self.speaker.auto_detect and ev.language in _supported():
+                source = ev.language
             utt = Utterance(id=f"{self.room.call_id[:6]}-{self.tag}{self._seq}", speaker_id=self.speaker.user_id,
                             seq=self._seq, original=text, source_lang=source, t_final=time.monotonic())  # fmt: skip
             if ev.latency_ms is not None:

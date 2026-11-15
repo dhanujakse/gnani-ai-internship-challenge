@@ -113,7 +113,8 @@ class VoicemailService:
             if not text:
                 self.db.finish_voicemail(vm_id, "failed", error="No speech was recognised. Please record again.")
                 return
-            source = detected if detected in BY_CODE else language
+            # Prisma's guess is judged from the script; trust it only when the sender asked for auto-detect
+            source = detected if auto_detect and detected in BY_CODE else language
             if source.split("-")[0] == target.split("-")[0]:
                 translation = text
             else:

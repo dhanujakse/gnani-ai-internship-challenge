@@ -25,12 +25,14 @@ import hmac
 import inspect
 import json
 import logging
+import os
 import re
 import time
 import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -288,7 +290,7 @@ class Services:
         try:
             settle = 0.05 if self.voicemail_pace_s == 0 else vm.SETTLE_S
             transcribed_text, detected = await vm.transcribe(self.recognizer, pcm, language, pace_s=self.voicemail_pace_s, settle_s=settle)
-            if detected:
+            if detected and not language:  # the sender's language wins: Prisma's guess is judged from the script
                 detected_lang = detected
         except Exception as exc:
             log.warning("background chat voice transcription error: %s", exc)
