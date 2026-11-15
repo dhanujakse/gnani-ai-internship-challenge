@@ -199,8 +199,8 @@ fun CallSetupScreen(join: Boolean, initialCode: String?, onBack: () -> Unit, onL
         scope.launch {
             try {
                 c.settingsStore.update { it.copy(speakerOn = route == AudioRoute.Speaker) }
-                val info = if (join) c.api.joinCall(normaliseCode(code), s.myLanguage) else c.api.createCall(s.myLanguage)
-                c.startCall(info, s.myLanguage, initialRoute = route)
+                val info = if (join) c.api.joinCall(normaliseCode(code), c.effectiveMyLanguage()) else c.api.createCall(c.effectiveMyLanguage())
+                c.startCall(info, c.effectiveMyLanguage(), initialRoute = route)
                 onStarted()
             } catch (e: ApiException) {
                 error = when (e.status) {
@@ -469,7 +469,7 @@ fun ActiveCallScreen(onFinished: (String) -> Unit, onLeaveScreen: () -> Unit, on
             call.setLanguage(newCode, settings.autoDetect)
             scope.launch {
                 c.settingsStore.update { it.copy(myLanguage = newCode) }
-                runCatching { c.api.updateMe(language = newCode) }
+                runCatching { c.api.updateMe(language = newCode) }.onSuccess { c.user.value = it }
             }
         },
         onDismiss = { showLanguageSheet = false }

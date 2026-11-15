@@ -89,19 +89,35 @@ class AppContainer(private val context: Context) {
 
     fun language(code: String): Language? = languages.value.firstOrNull { it.code == code }
 
-    /** Keeps the server's copy of my language in step, so voicemails to me are translated into it. */
+    /**
+     * The account's language is the truth (every language change in the app saves it on the server): this phone
+     * follows it. The other way round, a fresh install's default (English) overwrote a Tamil speaker's account
+     * at sign-in, and calls then listened for English.
+     */
     suspend fun syncLanguage() {
-        val mine = settings.value.myLanguage
-        val me = user.value ?: runCatching { api.me() }.getOrNull()?.also { user.value = it } ?: return
-        if (me.language != mine) runCatching { api.updateMe(language = mine) }.onSuccess { user.value = it }
+        val me = runCatching { api.me() }.getOrNull()?.also { user.value = it } ?: user.value ?: return
+        adoptAccountLanguage(me.language)
+    }
+
+    private suspend fun adoptAccountLanguage(code: String) {
+        if (code.isNotBlank() && settings.value.myLanguage != code) {
+            settingsStore.update { it.copy(myLanguage = code, voice = null) }
+        }
     }
 
     fun saveSession(session: Session) {
         tokens.set(session.token)
         tokens.setRefresh(session.refreshToken.ifEmpty { null })
         user.value = session.user
+        scope.launch { adoptAccountLanguage(session.user.language) } // sign-in on a new phone: use the account's language
         syncPushToken()
     }
+
+    /** The language I speak in calls: the account's, which the phone setting mirrors. */
+    fun effectiveMyLanguage(): String =
+        user.value?.language?.takeIf { it.isNotBlank() }
+            ?: settings.value.myLanguage.takeIf { it.isNotBlank() }
+            ?: "en-IN"
 
     fun syncPushToken() {
         runCatching {
@@ -144,10 +160,6 @@ class AppContainer(private val context: Context) {
 
     private fun inCall(): Boolean = activeCall.value?.state?.value?.status?.let { it != CallStatus.Ended && it != CallStatus.Failed } == true
 
-    fun effectiveMyLanguage(): String =
-        settings.value.myLanguage.takeIf { it.isNotBlank() }
-            ?: user.value?.language?.takeIf { it.isNotBlank() }
-            ?: "en-IN"
 
     private fun sendCallAck(callId: String, state: String, ackId: String? = null) {
         val payload = kotlinx.serialization.json.buildJsonObject {

@@ -181,7 +181,7 @@ fun LanguageScreen(onBack: () -> Unit) {
                     selected = isSelected,
                     onClick = {
                         update { it.copy(myLanguage = l.code, voice = null) }
-                        scope.launch { runCatching { c.api.updateMe(language = l.code) } }
+                        scope.launch { runCatching { c.api.updateMe(language = l.code) }.onSuccess { c.user.value = it } }
                         active?.setLanguage(l.code, s.autoDetect) // changes language mid-call when a call is active
                     },
                     label = { Text("${l.native} · ${l.name}") },
